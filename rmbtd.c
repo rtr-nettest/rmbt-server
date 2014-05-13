@@ -494,7 +494,7 @@ void handle_connection(int thread_num, MY_SOCK sock)
     
     if (CHECK_TOKEN)
     {
-        if (check_token(buf2, buf3, buf4))
+        if (check_token(thread_num, buf2, buf3, buf4))
         {
         	syslog(LOG_ERR, "[THR %d] token was not accepted", thread_num);
             return;
