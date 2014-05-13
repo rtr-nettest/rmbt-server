@@ -13,14 +13,15 @@
 # Short-Description: Start/Stop the RMBT daemon
 ### END INIT INFO
 
-DAEMON=/home/leo/git/speedtest/server/server
+WORKDIR=/home/netztest/netztest/RMBTServer
+DAEMON=/home/netztest/netztest/RMBTServer/rmbtd
 NAME=rmbtd
 DESC=rmbtd
 
 CERTFILE="server.crt"
 KEYFILE="server.key"
-LISTEN_PORTS="8081"
-LISTEN_SSL_PORTS="8082"
+LISTEN_PORTS="5000"
+LISTEN_SSL_PORTS="5001"
 DAEMON_OPTS=""
 
 test -x $DAEMON || exit 0
@@ -49,7 +50,7 @@ set -e
 case "$1" in
   start)
         log_daemon_msg "Starting $DESC" "$NAME"
-        start-stop-daemon --start -d /home/leo/git/speedtest/server --exec "$DAEMON" -- -d -c $CERTFILE -k $KEYFILE $DAEMON_OPTS
+        start-stop-daemon --start -d $WORKDIR --exec "$DAEMON" -- -d -c $CERTFILE -k $KEYFILE $DAEMON_OPTS
         log_end_msg $?
         ;;
   stop)
