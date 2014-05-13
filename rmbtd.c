@@ -389,7 +389,7 @@ const char *base64(const char *input, int ilen, char *output, int *olen)
     }
 }
 
-int check_token(const char *uuid, const char *start_time_str, const char *hmac)
+int check_token(int thread_num, const char *uuid, const char *start_time_str, const char *hmac)
 {
     unsigned char md_buf[EVP_MAX_MD_SIZE];
     unsigned int md_size = sizeof(md_buf);
@@ -412,33 +412,30 @@ int check_token(const char *uuid, const char *start_time_str, const char *hmac)
     int result = strncmp(base64_buf, hmac, base64_buf_size);
     if (result != 0)
     {
-        printf("ILLEGAL TOKEN!\n");
-        printf("hmac-in:   %s|\n", hmac);
-        printf("hmac-calc: %s|\n", base64_buf);
+    	syslog(LOG_ERR, "[THR %d] got illegal token: \"%s\", got hmac: \"%s\", expected: \"%s\"", thread_num, uuid, hmac, base64_buf);
     }
     else
     {
-        printf("TOKEN OK\n");
-        
         /* check if client is allowed yet */
         time_t now = time(NULL);
         long int start_time = atoi(start_time_str);
         
-        printf("now: %ld; start_time: %ld; MAX_ACCEPT_EARLY: %d, MAX_ACCEPT_LATE: %d\n", now, start_time, MAX_ACCEPT_EARLY, MAX_ACCEPT_LATE);
+        // printf("now: %ld; start_time: %ld; MAX_ACCEPT_EARLY: %d, MAX_ACCEPT_LATE: %d\n", now, start_time, MAX_ACCEPT_EARLY, MAX_ACCEPT_LATE);
         
         if (start_time - MAX_ACCEPT_EARLY > now || start_time + MAX_ACCEPT_LATE < now)
         {
             if (start_time - MAX_ACCEPT_EARLY > now)
-                printf("Client is not allowed yet. %ld seconds to early.\n", start_time - now);
-            else
-                printf("Client is %ld seconds too late.\n", now - start_time);
+            	syslog(LOG_ERR, "[THR %d] client is not allowed yet. %ld seconds to early", thread_num, start_time - now);
+			else
+				syslog(LOG_ERR, "[THR %d] client is %ld seconds too late", thread_num, now - start_time);
+
             result = -1;
         }
         
         /* accept if a little bit too early, but let him wait */
         if (result == 0 && start_time > now)
         {
-            printf("Client is %ld seconds too early. Let him wait...\n", start_time - now);
+        	syslog(LOG_DEBUG, "[THR %d] client is %ld seconds too early. Let him wait", thread_num, start_time - now);
             
             struct timespec sleep;
             sleep.tv_sec = start_time - now;
@@ -470,7 +467,7 @@ void write_err(MY_SOCK sock)
     //printf("sending ERR\n");
 }
 
-void handle_connection(MY_SOCK sock)
+void handle_connection(int thread_num, MY_SOCK sock)
 {
     /************************/
     
@@ -488,16 +485,20 @@ void handle_connection(MY_SOCK sock)
     if (r <= 0)
         return;
     
-    printf("GOT (%d): %s\n", r, buf1);
     r = sscanf((char*)buf1, "TOKEN %36[0-9a-f-]_%12[0-9]_%50[a-zA-Z0-9+/=]", buf2, buf3, buf4);
     if (r != 3)
+    {
+    	syslog(LOG_ERR, "[THR %d] syntax error on token: \"%s\"", thread_num, buf1);
         return;
-    printf("GOT (%d): %s#%s#%s\n", r, buf2, buf3, buf4);
+    }
     
     if (CHECK_TOKEN)
     {
         if (check_token(buf2, buf3, buf4))
+        {
+        	syslog(LOG_ERR, "[THR %d] token was not accepted", thread_num);
             return;
+        }
     }
     
     my_write(sock, OK_NL, sizeof(OK_NL)-1);
@@ -512,15 +513,12 @@ void handle_connection(MY_SOCK sock)
         int r = my_readline(sock, buf1, sizeof(buf1));
         if (r <= 0)
             return;
-        printf("GOT (%d): %s\n", r, buf1);
         
         int parts = sscanf((char*)buf1, "%50s %12[^\n]", buf2, buf3);
         
         /***** GETTIME *****/
         if (parts == 2 && strncmp((char*)buf2, GETTIME, sizeof(GETTIME)) == 0)
         {
-            printf("GETTIME\n");
-            
             int seconds;
             r = sscanf((char*)buf3, "%12d", &seconds);
             if (r != 1 || seconds <=0 || seconds > MAX_SECONDS)
@@ -562,7 +560,7 @@ void handle_connection(MY_SOCK sock)
                 }
                 while (diffnsec < maxnsec && r > 0);
                 
-                printf("TIME reached, %lu bytes sent.\n", total_bytes);
+                //printf("TIME reached, %lu bytes sent.\n", total_bytes);
                 
                 if (r <= 0)
                     write_err(sock);
@@ -591,8 +589,6 @@ void handle_connection(MY_SOCK sock)
         /***** GETCHUNKS *****/
         else if (parts == 2 && strncmp((char*)buf2, GETCHUNKS, sizeof(GETCHUNKS)) == 0)
         {
-            printf("GETCHUNKS\n");
-            
             int chunks;
             r = sscanf((char*)buf3, "%12d", &chunks);
             if (r != 1 || chunks <=0 || chunks > MAX_CHUNKS)
@@ -658,7 +654,6 @@ void handle_connection(MY_SOCK sock)
         {
             int printIntermediateResult = strncmp((char*)buf2, PUT, sizeof(PUT)) == 0;
             
-            printf("PUT\n");
             my_write(sock, OK_NL, sizeof(OK_NL)-1);
             
             /* start time measurement */
@@ -712,15 +707,12 @@ void handle_connection(MY_SOCK sock)
         /***** QUIT *****/
         else if (strncmp((char*)buf2, QUIT, sizeof(QUIT)) == 0)
         {
-            printf("QUIT\n");
             my_write(sock, BYE_NL, sizeof(BYE_NL)-1);
             return;
         }
         /***** PING *****/
         else if (parts == 1 && strncmp((char*)buf2, PING, sizeof(PING)) == 0)
         {
-            printf("PING\n");
-            
             /* start time measurement */
             struct timespec timestamp;
             fill_ts(&timestamp);
@@ -848,8 +840,10 @@ static void *worker_thread_main(void *arg)
         int sock = socket_descriptor;
 #endif
         
-        handle_connection(sock);
+        handle_connection(thread_num, sock);
         
+        syslog(LOG_INFO, "[THR %d] closing connection", thread_num);
+
 #ifdef HAVE_SSL
         if (use_ssl)
         {
@@ -1047,8 +1041,8 @@ void shutdown_ssl()
 
 int drop_privs(const uid_t uid, const gid_t gid)
 {
-    printf("dropping privileges to uid %d and gid %d\n", uid, gid);
-    
+	syslog(LOG_DEBUG, "dropping privileges to uid %d and gid %d\n", uid, gid);
+
     if (setgroups(1, &gid) == -1)
         return -1;
     if (setgid(gid) == -1)
