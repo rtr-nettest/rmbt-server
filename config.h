@@ -33,3 +33,11 @@
 #define MAX_SECONDS 30
 
 #define GREETING "RMBTv0.3\n"
+
+#define PORT_NOSSL 5231
+#define PORT_SSL 443
+
+/*
+#define PORT_PROXY_TEST 15550
+#define PORT_UDP_TEST 15551
+*/
