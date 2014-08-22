@@ -34,8 +34,8 @@ else
     exit 1
 fi
 
-if [ -f /etc/default/rmbtd ] ; then
-    . /etc/default/rmbtd
+if [ -f /etc/default/websocket_server ] ; then
+    . /etc/default/websocket_server
 fi
 
 for port in $LISTEN_SSL_PORTS ; do
