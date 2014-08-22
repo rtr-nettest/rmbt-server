@@ -44,6 +44,7 @@
 #include <poll.h>
 #include <arpa/inet.h>
 
+#include "cwebsocket/websocket.h"
 #include "config.h"
 
 #define HAVE_SSL  /* currently necessary! */
@@ -66,12 +67,12 @@
     
     SSL_CTX *ssl_ctx;
     #define MY_SOCK BIO*
-    #define my_write BIO_write
-    #define my_read BIO_read
+    #define my_organic_write BIO_write
+    #define my_organic_read BIO_read
 #else
     #define MY_SOCK int
-    #define my_write write
-    #define my_read read
+    #define my_organic_write write
+    #define my_organic_read read
 #endif
 
 #define NEWLINE '\n'
@@ -121,6 +122,7 @@ char *total_random;
 long random_size;
 
 long page_size;
+char use_websocket = 0;
 
 void print_help()
 {
@@ -137,6 +139,7 @@ void print_help()
 			" -u     drop root privileges and setuid to specified user; must be root\n\n"
 			" -d     fork into background as daemon (no argument)\n\n"
 			" -D     enable debug logging (no argument)\n\n"
+			" -w     use as websocket server (no argument)\n\n"
 			"Required are -c,-k and at least one -l/-L option\n",
 			DEFAULT_NUM_THREADS);
 }
@@ -157,6 +160,84 @@ void syslog_and_print(int priority, const char *format, ...)
     vsyslog(priority, format, va1);
     va_end(va1);
 }
+
+ssize_t my_write(MY_SOCK fd, const void *buf, size_t count) {
+    if (use_websocket) {
+        char buffer[CHUNK_SIZE +10];
+        size_t out_len = CHUNK_SIZE;
+        if (count < 2 || count > (CHUNK_SIZE-3)) {
+            wsMakeFrame((const uint8_t*) buf, count, (uint8_t*) buffer, &out_len, WS_BINARY_FRAME);
+        }
+        else {
+            wsMakeFrame((const uint8_t*) buf, count, (uint8_t*) buffer, &out_len, WS_TEXT_FRAME);
+        }
+        my_organic_write(fd,buffer,out_len); //@TODO: return real len of unmasked/unframed output
+        return count;
+    }
+    else
+    {
+        return my_organic_write(fd,buf,count);
+    }
+}
+
+ssize_t my_read(MY_SOCK b, void *buf, size_t count) {   
+    if (use_websocket) {
+        //temporary buffer with enough space for the Frame
+        uint8_t tmpBuf[count+100];
+        
+        uint8_t* data = buf;
+        //receive the first 8 bytes that hold the websocket frame header
+        ssize_t len = my_organic_read(b,tmpBuf,8); 
+        size_t in_len = CHUNK_SIZE;
+        if (len <= 0) {
+            return len;
+        }
+        
+        enum wsFrameType t;
+        size_t payloadLength;
+        uint8_t payloadFieldExtraBytes;
+        payloadLength = getPayloadLength( tmpBuf, len, &payloadFieldExtraBytes, &t);
+        
+        //read did not yet get the full tcp package
+        // -> read again until we got the full websocket frame
+        int remaining = (payloadLength + 6 + payloadFieldExtraBytes) -len;
+        //printf("payload length: %d, got %d, remaining: %d\n",(int) payloadLength, (int) len, remaining);
+        while (payloadLength != 0 && remaining > 0) {
+            int newLen = my_organic_read(b,&tmpBuf[len],remaining);
+
+            if (newLen == 0) {
+                break;
+            }
+            
+            else if (newLen < 0) {
+                long err = ERR_get_error();
+                syslog(LOG_ERR, "error: %ld %s - ",err,ERR_error_string(errno,NULL));
+                syslog(LOG_ERR, "error: %d %s\n",errno,strerror(errno));
+                break;
+            }
+            remaining -= newLen;
+            len += newLen;
+        }
+        
+        
+        t = wsParseInputFrame((uint8_t *) tmpBuf, len, &data, &in_len);
+        //special frames: Closing frames
+        if (t == WS_CLOSING_FRAME) {
+            return 0;
+            //close connection
+          
+        }
+        
+        //@TODO: Ping frames; Error frames; Continuation Frames
+        
+        memmove(buf,data,in_len);
+        return in_len;
+    }
+    else {
+        return my_organic_read(b,buf,count);
+    }
+}
+
 
 int my_readline(MY_SOCK sock, const char *buf, int size)
 {
@@ -475,15 +556,58 @@ void handle_connection(int thread_num, MY_SOCK sock)
     char buf2[CHUNK_SIZE];
     char buf3[CHUNK_SIZE];
     char buf4[CHUNK_SIZE];
+    int r, s;
+    
+    if (use_websocket) {
+        int ws;
         
+        r = my_organic_read(sock, buf1, sizeof (buf1));
+        if (r <= 0) {
+            syslog(LOG_INFO, "initialization error: %d %d", r, (int) ERR_get_error());
+            ERR_print_errors_fp(stdout);
+            return;
+        }
+
+        //websocket handshake?
+        ws = strncmp((char*) buf1, "GET", 3);
+        if (ws == 0) {
+            
+            struct handshake hs;
+            nullHandshake(&hs);
+
+            //try to parse handshake
+            enum wsFrameType handshake = wsParseHandshake((const uint8_t*) buf1, r, &hs);
+
+            if (handshake == WS_ERROR_FRAME) {
+                syslog(LOG_INFO, "invalid handshake");
+                return;
+            }
+
+            //generate and send the handshake response
+            size_t framesize = CHUNK_SIZE;
+            wsGetHandshakeAnswer(&hs, (uint8_t*) buf1, &framesize);
+            //syslog(LOG_INFO, "init Websocket handshake3 %d >> %s <<", (int) framesize, buf1);
+            //server response
+            my_organic_write(sock, buf1, framesize);
+
+            //syslog(LOG_INFO, "send answer");
+
+        }
+        else {
+            syslog(LOG_INFO, "initialization error: %d %d", r, (int) ERR_get_error());
+            return;
+        }
+    }
+    
     my_write(sock, GREETING, sizeof(GREETING)-1);
     my_write(sock, ACCEPT_TOKEN_NL, sizeof(ACCEPT_TOKEN_NL)-1);
     
-    int r,s;
-    
-    r = my_readline(sock, buf1, sizeof(buf1));
-    if (r <= 0)
+    r = my_readline(sock, buf1, sizeof (buf1));
+    if (r <= 0) {
+        syslog(LOG_INFO, "initialization error: %d %d", r, (int) ERR_get_error());
+        ERR_print_errors_fp(stdout);
         return;
+    }
     
     r = sscanf((char*)buf1, "TOKEN %36[0-9a-f-]_%12[0-9]_%50[a-zA-Z0-9+/=]", buf2, buf3, buf4);
     if (r != 3)
@@ -843,7 +967,6 @@ static void *worker_thread_main(void *arg)
         }
         int sock = socket_descriptor;
 #endif
-        
         handle_connection(thread_num, sock);
         
         syslog(LOG_INFO, "[THR %d] closing connection", thread_num);
@@ -1115,7 +1238,7 @@ int main(int argc, char **argv)
     int i;
     int matched;
     int size;
-    while ((c = getopt (argc, argv, "l:L:c:k:t:u:p:dD")) != -1)
+    while ((c = getopt (argc, argv, "l:L:c:k:t:u:p:dDw")) != -1)
         switch (c)
         {
         case 'l': /* listen */
@@ -1230,7 +1353,10 @@ int main(int argc, char **argv)
             pidfile = optarg;
             break;
             */
-
+        case 'w':
+            use_websocket = 1;
+            syslog_and_print(LOG_INFO, "starting as websocket server");
+            break;
         case '?':
         	print_help();
             return EXIT_FAILURE;
@@ -1293,9 +1419,9 @@ int main(int argc, char **argv)
     setlogmask(LOG_UPTO(_debug ? LOG_DEBUG : LOG_INFO));
 
 	syslog_and_print(LOG_INFO, "starting...");
-
+	
 	syslog(LOG_DEBUG, "debug logging on");
-
+        
     struct sigaction action;
     memset(&action, 0, sizeof(struct sigaction));
     action.sa_handler = term_handler;
@@ -1304,11 +1430,11 @@ int main(int argc, char **argv)
     
     action.sa_handler = SIG_IGN;
     sigaction(SIGPIPE, &action, NULL);
-    
+	
     page_size = sysconf(_SC_PAGE_SIZE);
-    
+	
     mmap_random();
-    
+	
 #ifdef HAVE_SSL
     init_ssl(cert_path, key_path);
 #endif
@@ -1317,7 +1443,7 @@ int main(int argc, char **argv)
     cert_path = NULL;
     free(key_path);
     key_path = NULL;
-    
+		
     do_bind();
     
     if (_setuid != 0 || _setgid != 0)

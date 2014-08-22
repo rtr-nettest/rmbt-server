@@ -1,5 +1,5 @@
-GCC_PARAMS = -Wall -Wno-unused-value -o rmbtd rmbtd.c -pthread -lrt -lssl -lcrypto
-SERVER_DEP = rmbtd.c config.h secret.h
+GCC_PARAMS = -Wall -Wno-unused-value -o rmbtd cwebsocket/base64_enc.c cwebsocket/sha1.c cwebsocket/websocket.c rmbtd.c -pthread -lrt -lssl -lcrypto
+SERVER_DEP = cwebsocket/websocket.c rmbtd.c config.h secret.h
 
 all: rmbtd
 
