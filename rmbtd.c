@@ -201,6 +201,12 @@ ssize_t my_read(MY_SOCK b, void *buf, size_t count) {
         //read did not yet get the full tcp package
         // -> read again until we got the full websocket frame
         int remaining = (payloadLength + 6 + payloadFieldExtraBytes) -len;
+        
+        //prevent possible buffer overflows
+        if (remaining > count) {
+            return 0;
+        }
+        
         //printf("payload length: %d, got %d, remaining: %d\n",(int) payloadLength, (int) len, remaining);
         while (payloadLength != 0 && remaining > 0) {
             int newLen = my_organic_read(b,&tmpBuf[len],remaining);
