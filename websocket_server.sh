@@ -14,7 +14,9 @@
 ### END INIT INFO
 
 WORKDIR=/home/netztest/WebSocketServer
-DAEMON=/home/netztest/netztest/RMBTServer/rmbtd
+# daemon is a symlink to /home/netztest/netztest/RMBTServer/rmbtd
+DAEMON=/home/netztest/WebSocketServer/websocket_server
+#DAEMON=/home/netztest/netztest/RMBTServer/rmbtd
 NAME=websocket_server
 DESC=websocket_server
 
@@ -22,7 +24,7 @@ CERTFILE="netztest.crt"
 KEYFILE="netztest.key"
 LISTEN_SSL_PORTS="213.208.150.178:443 [2a01:190:1700:39::2:178]:443"
 DAEMON_OPTS="-w -u netztest"
-PIDFILE=/tmp/websocket_server.pid
+PIDFILE=/var/run/netztest/websocket_server.pid
 
 
 test -x $DAEMON || exit 0
@@ -47,16 +49,16 @@ set -e
 case "$1" in
   start)
         log_daemon_msg "Starting $DESC" "$NAME"
-        start-stop-daemon --start -d $WORKDIR --pidfile $PIDFILE --exec "$DAEMON" -- -d -c $CERTFILE -k $KEYFILE $DAEMON_OPTS
+        start-stop-daemon --start -d $WORKDIR --exec "$DAEMON" -- -d -c $CERTFILE -k $KEYFILE $DAEMON_OPTS
         log_end_msg $?
         ;;
   stop)
         log_daemon_msg "Stopping $DESC" "$NAME"
-        start-stop-daemon --stop --pidfile $PIDFILE --exec "$DAEMON" --quiet --oknodo --retry 15
+        start-stop-daemon --stop --exec "$DAEMON" --quiet --oknodo --retry 15
         log_end_msg $?
         ;;
   status)
-        status_of_proc -p $PIDFILE "$DAEMON" "$NAME" && exit 0 || exit $?
+        status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
     ;;
   restart)
         $0 stop

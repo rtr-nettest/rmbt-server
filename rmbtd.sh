@@ -23,7 +23,6 @@ KEYFILE="server.key"
 LISTEN_PORTS="213.208.152.73:5231 [2a01:190:1700:39::73]:5231"
 LISTEN_SSL_PORTS="213.208.152.73:443 [2a01:190:1700:39::73]:443"
 DAEMON_OPTS="-u netztest"
-PIDFILE=/tmp/rmbtd.pid
 
 test -x $DAEMON || exit 0
 
@@ -51,16 +50,16 @@ set -e
 case "$1" in
   start)
         log_daemon_msg "Starting $DESC" "$NAME"
-        start-stop-daemon --start -d $WORKDIR --pidfile $PIDFILE --exec "$DAEMON" -- -d -c $CERTFILE -k $KEYFILE $DAEMON_OPTS
+        start-stop-daemon --start -d $WORKDIR --exec "$DAEMON" -- -d -c $CERTFILE -k $KEYFILE $DAEMON_OPTS
         log_end_msg $?
         ;;
   stop)
         log_daemon_msg "Stopping $DESC" "$NAME"
-        start-stop-daemon --stop --pidfile $PIDFILE --exec "$DAEMON" --quiet --oknodo --retry 15
+        start-stop-daemon --stop --exec "$DAEMON" --quiet --oknodo --retry 15
         log_end_msg $?
         ;;
   status)
-        status_of_proc -p $PIDFILE "$DAEMON" "$NAME" && exit 0 || exit $?
+        status_of_proc "$DAEMON" "$NAME" && exit 0 || exit $?
     ;;
   restart)
         $0 stop
