@@ -13,7 +13,7 @@ clean:
 	rm rmbtd
 
 run: random rmbtd
-	./rmbtd
+	./rmbtd -l 8081 -L 8082 -c server.crt -k server.key -D
 	
 random: 
 	dd if=/dev/urandom of=random bs=1M count=100
