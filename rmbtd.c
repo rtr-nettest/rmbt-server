@@ -575,7 +575,7 @@ void handle_connection(int thread_num, MY_SOCK sock)
         }
 
         //websocket handshake?
-        ws = strncmp((char*) buf1, "GET", 3);
+        ws = strncmp((char*) buf1, "GET ", 4);
         if (ws == 0) {
             
             struct handshake hs;
