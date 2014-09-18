@@ -584,7 +584,7 @@ void handle_connection(int thread_num, MY_SOCK sock)
             //try to parse handshake
             enum wsFrameType handshake = wsParseHandshake((const uint8_t*) buf1, r, &hs);
 
-            if (handshake == WS_ERROR_FRAME) {
+            if (handshake != WS_OPENING_FRAME) {
                 syslog(LOG_INFO, "invalid handshake");
                 return;
             }
