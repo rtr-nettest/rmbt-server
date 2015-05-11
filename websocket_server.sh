@@ -16,13 +16,13 @@
 WORKDIR=/home/netztest/WebSocketServer
 # daemon is a symlink to /home/netztest/netztest/RMBTServer/rmbtd
 DAEMON=/home/netztest/WebSocketServer/websocket_server
-#DAEMON=/home/netztest/netztest/RMBTServer/rmbtd
 NAME=websocket_server
 DESC=websocket_server
-
+# you need recognised certificates here
 CERTFILE="netztest.crt"
 KEYFILE="netztest.key"
-LISTEN_SSL_PORTS="213.208.150.178:443 [2a01:190:1700:39::2:178]:443"
+# replace these addresses with your public IPs
+LISTEN_SSL_PORTS="192.168.1.2:443 [fd93:4f3e:8299::2]:443"
 DAEMON_OPTS="-w -u netztest"
 PIDFILE=/var/run/netztest/websocket_server.pid
 

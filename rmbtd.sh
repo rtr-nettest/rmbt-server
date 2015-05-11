@@ -20,8 +20,9 @@ DESC=rmbtd
 
 CERTFILE="server.crt"
 KEYFILE="server.key"
-LISTEN_PORTS="213.208.152.73:5231 [2a01:190:1700:39::73]:5231"
-LISTEN_SSL_PORTS="213.208.152.73:443 [2a01:190:1700:39::73]:443"
+# replace with your public IPs
+# you should use port 443 if it is not used by other services (eg. Websocket or Web server)
+LISTEN_SSL_PORTS="192.168.1.2:8443 [fd93:4f3e:8299::2]:8443"
 DAEMON_OPTS="-u netztest"
 
 test -x $DAEMON || exit 0
@@ -36,10 +37,6 @@ fi
 if [ -f /etc/default/rmbtd ] ; then
     . /etc/default/rmbtd
 fi
-
-for port in $LISTEN_PORTS ; do
-    DAEMON_OPTS="$DAEMON_OPTS -l $port"
-done
 
 for port in $LISTEN_SSL_PORTS ; do
     DAEMON_OPTS="$DAEMON_OPTS -L $port"
