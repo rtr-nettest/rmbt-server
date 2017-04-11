@@ -268,11 +268,8 @@ enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
 
     if (inputLength < 2)
         return WS_INCOMPLETE_FRAME;
-    
     if ((inputFrame[0] & 0x70) != 0x0) // checks extensions off
         return WS_ERROR_FRAME;
-    if ((inputFrame[0] & 0x80) != 0x80) // we haven't continuation frames support
-        return WS_ERROR_FRAME; // so, fin flag must be set
     if ((inputFrame[1] & 0x80) != 0x80) // checks masking bit
         return WS_ERROR_FRAME;
 
@@ -281,7 +278,8 @@ enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
             opcode == WS_BINARY_FRAME ||
             opcode == WS_CLOSING_FRAME ||
             opcode == WS_PING_FRAME ||
-            opcode == WS_PONG_FRAME
+            opcode == WS_PONG_FRAME ||
+            opcode == WS_CONTINUATION_FRAME
     ) 
     { 
         enum wsFrameType frameType = opcode;
