@@ -23,6 +23,7 @@
 
 #include <arpa/inet.h>
 #include "websocket.h"
+#include <byteswap.h>
 
 static char rn[] PROGMEM = "\r\n";
 
@@ -185,7 +186,7 @@ void wsGetHandshakeAnswer(const struct handshake *hs, uint8_t *outFrame,
     memset(shaHash, 0, sizeof(shaHash));
     sha1(shaHash, responseKey, length*8);
     base64enc(responseKey, shaHash, 20);
-
+    
     int written = sprintf_P((char *)outFrame,
                             PSTR("HTTP/1.1 101 Switching Protocols\r\n"
                                  "%s%s\r\n"
@@ -223,7 +224,8 @@ void wsMakeFrame(const uint8_t *data, size_t dataLength,
         *outLength = 4;
     } else {
         outFrame[1] = 127;
-        memcpy(&outFrame[2], &dataLength, 8);
+        uint64_t payloadLength64b = bswap_64(dataLength);
+        memcpy(&outFrame[2], &payloadLength64b, 8);
         *outLength = 10;
     }
     memcpy(&outFrame[*outLength], data, dataLength);
@@ -248,17 +250,12 @@ size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
         uint16_t payloadLength16b = 0;
         *payloadFieldExtraBytes = 2;
         memcpy(&payloadLength16b, &inputFrame[2], *payloadFieldExtraBytes);
-        payloadLength16b = ntohs(payloadLength16b); //BUGFIX! 
-        payloadLength = payloadLength16b;
+        payloadLength = ntohs(payloadLength16b);
     } else if (payloadLength == 0x7F) {
         uint64_t payloadLength64b = 0;
         *payloadFieldExtraBytes = 8;
         memcpy(&payloadLength64b, &inputFrame[2], *payloadFieldExtraBytes);
-        if (payloadLength64b > SIZE_MAX) {
-            *frameType = WS_ERROR_FRAME;
-            return 0;
-        }
-        payloadLength = (size_t)payloadLength64b;
+        payloadLength = bswap_64(payloadLength64b);
     }
 
     return payloadLength;
@@ -293,7 +290,7 @@ enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
         size_t payloadLength = getPayloadLength(inputFrame, inputLength,
                                                 &payloadFieldExtraBytes, &frameType);
         if (payloadLength > 0) {
-            if (payloadLength < inputLength-6-payloadFieldExtraBytes) // 4-maskingKey, 2-header
+            if (payloadLength + 6 + payloadFieldExtraBytes > inputLength) // 4-maskingKey, 2-header
                 return WS_INCOMPLETE_FRAME;
             uint8_t *maskingKey = &inputFrame[2 + payloadFieldExtraBytes];
 
@@ -304,7 +301,7 @@ enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
             assert(payloadLength == inputLength-6-payloadFieldExtraBytes);
 
             *dataPtr = &inputFrame[2 + payloadFieldExtraBytes + 4];
-            *dataLength = payloadLength;    
+            *dataLength = payloadLength;
         
             size_t i;
             for (i = 0; i < *dataLength; i++) {
