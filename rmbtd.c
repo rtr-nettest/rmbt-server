@@ -163,7 +163,7 @@ void syslog_and_print(int priority, const char *format, ...)
 
 ssize_t my_write(MY_SOCK fd, const void *buf, size_t count) {
     if (use_websocket) {
-        char buffer[CHUNK_SIZE +10];
+        char buffer[CHUNK_SIZE + 14];
         size_t out_len = CHUNK_SIZE;
         if (count < 2 || count > (CHUNK_SIZE-3)) {
             wsMakeFrame((const uint8_t*) buf, count, (uint8_t*) buffer, &out_len, WS_BINARY_FRAME);
@@ -172,6 +172,27 @@ ssize_t my_write(MY_SOCK fd, const void *buf, size_t count) {
             wsMakeFrame((const uint8_t*) buf, count, (uint8_t*) buffer, &out_len, WS_TEXT_FRAME);
         }
         my_organic_write(fd,buffer,out_len); //@TODO: return real len of unmasked/unframed output
+        
+        /**
+         * Activate if the amount of written bytes needs to be ever taken into account
+         * This is deactivated for now since openssl seems to handle that nicely by itself
+         *//*  
+        ssize_t remaining = out_len;
+        
+        do {
+            syslog(LOG_INFO, "remaining %d, arry: %p, starting position: %p", (int)remaining, (char*)buffer, &buffer[out_len - remaining]);
+            ssize_t cnt = my_organic_write(fd, &buffer[out_len - remaining], remaining); //@TODO: return real len of unmasked/unframed output
+            remaining -= cnt;
+
+            //break on error, signal error
+            if (cnt <= 0) {
+                long err = ERR_get_error();
+                syslog(LOG_INFO, "error: %ld %s - ",err,ERR_error_string(errno,NULL));
+                syslog(LOG_INFO, "error: %d %s\n",errno,strerror(errno));
+                break;
+            }
+        } while (remaining > 0);*/
+        
         return count;
     }
     else
@@ -186,58 +207,69 @@ ssize_t my_read(MY_SOCK b, void *buf, size_t count) {
         uint8_t tmpBuf[count+100];
         
         uint8_t* data = buf;
-        //receive the first 8 bytes that hold the websocket frame header
-        ssize_t len = my_organic_read(b,tmpBuf,8); 
-        size_t in_len = CHUNK_SIZE;
-        if (len <= 0) {
-            return len;
-        }
+        char finFlagSet = 0;
+        ssize_t totalRead = 0;
         
-        enum wsFrameType t;
-        size_t payloadLength;
-        uint8_t payloadFieldExtraBytes;
-        payloadLength = getPayloadLength( tmpBuf, len, &payloadFieldExtraBytes, &t);
-        
-        //read did not yet get the full tcp package
-        // -> read again until we got the full websocket frame
-        int remaining = (payloadLength + 6 + payloadFieldExtraBytes) -len;
-        
-        //prevent possible buffer overflows
-        if (remaining > count) {
-            return 0;
-        }
-        
-        //printf("payload length: %d, got %d, remaining: %d\n",(int) payloadLength, (int) len, remaining);
-        while (payloadLength != 0 && remaining > 0) {
-            int newLen = my_organic_read(b,&tmpBuf[len],remaining);
+        //receive websocket frames, including continuation frames,
+        //reassemble these continuation frames
+        do {
+            ssize_t len = my_organic_read(b, tmpBuf, 14);
+            size_t in_len = CHUNK_SIZE;
+            if (len <= 0) {
+                return len;
+            }
 
-            if (newLen == 0) {
-                break;
+            enum wsFrameType t;
+            size_t payloadLength;
+            uint8_t payloadFieldExtraBytes;
+            payloadLength = getPayloadLength(tmpBuf, len, &payloadFieldExtraBytes, &t);
+
+            //read did not yet get the full tcp package
+            // -> read again until we got the full websocket frame
+            int remaining = (payloadLength + 6 + payloadFieldExtraBytes) - len;
+
+            //prevent possible buffer overflows
+            if (remaining > count) {
+                return 0;
             }
+
+            //printf("payload length: %d, got %d, remaining: %d\n",(int) payloadLength, (int) len, remaining);
+            while (payloadLength != 0 && remaining > 0) {
+                int newLen = my_organic_read(b, &tmpBuf[len], remaining);
+
+                if (newLen == 0) {
+                    break;
+                }
+                else if (newLen < 0) {
+                    long err = ERR_get_error();
+                    syslog(LOG_ERR, "error: %ld %s - ", err, ERR_error_string(errno, NULL));
+                    syslog(LOG_ERR, "error: %d %s\n", errno, strerror(errno));
+                    break;
+                }
+                remaining -= newLen;
+                len += newLen;
+            }
+
+
+            t = wsParseInputFrame((uint8_t *) tmpBuf, len, &data, &in_len);
+            //special frames: Closing frames
+            if (t == WS_CLOSING_FRAME) {
+                return 0;
+                //close connection
+
+            }
+
+            finFlagSet = (tmpBuf[0] & 0x80) == 0x80;            
             
-            else if (newLen < 0) {
-                long err = ERR_get_error();
-                syslog(LOG_ERR, "error: %ld %s - ",err,ERR_error_string(errno,NULL));
-                syslog(LOG_ERR, "error: %d %s\n",errno,strerror(errno));
-                break;
-            }
-            remaining -= newLen;
-            len += newLen;
-        }
+            //move the gathered data to the buffer at the current position
+            memmove(buf + totalRead, data, in_len);
+            totalRead += in_len;
+            //syslog(LOG_INFO, "is finished: %d ; total read: %d (%d)", (int)isFinished, (int)in_len, tmpBuf[0]);
+                    
+        } while (!finFlagSet); //break, if a websocket frame has the FIN-flag set
         
-        
-        t = wsParseInputFrame((uint8_t *) tmpBuf, len, &data, &in_len);
-        //special frames: Closing frames
-        if (t == WS_CLOSING_FRAME) {
-            return 0;
-            //close connection
-          
-        }
-        
-        //@TODO: Ping frames; Error frames; Continuation Frames
-        
-        memmove(buf,data,in_len);
-        return in_len;
+        //@TODO: Error frames
+        return totalRead;
     }
     else {
         return my_organic_read(b,buf,count);
@@ -734,11 +766,8 @@ void handle_connection(int thread_num, MY_SOCK sock)
                 struct timespec timestamp;
                 fill_ts(&timestamp);
                 
-                int s;
                 /* TODO: start at random place? */
                 char *random_ptr = total_random; 
-                unsigned char null = 0x00;
-                unsigned char ff = 0xff;
                 unsigned long total_bytes = 0;
                 
                 int chunks_sent = 0;
@@ -749,15 +778,20 @@ void handle_connection(int thread_num, MY_SOCK sock)
                     if (random_ptr + CHUNK_SIZE >= (total_random + random_size))
                         random_ptr = total_random;
                     
-                    r = my_write(sock, random_ptr, CHUNK_SIZE - 1);
-                    if (++chunks_sent >= chunks)
-                        s = my_write(sock, &ff, 1); // signal last package
-                    else
-                        s = my_write(sock, &null, 1);
-                    total_bytes += r + s;
+                    memcpy(buf4, random_ptr, CHUNK_SIZE);
+
+                    if (++chunks_sent >= chunks) {
+                        buf4[CHUNK_SIZE - 1] = 0xff; // signal last package
+                    }
+                    else {
+                        buf4[CHUNK_SIZE - 1] = 0x00;
+                    }
+                    
+                    r = my_write(sock, buf4, CHUNK_SIZE);
+                    total_bytes += r;
                     random_ptr += CHUNK_SIZE;
                 }
-                while (chunks_sent < chunks && r > 0 && s > 0);
+                while (chunks_sent < chunks && r > 0);
                 
                 if (r <= 0 || s <= 0)
                     write_err(sock);
@@ -1085,15 +1119,16 @@ void mmap_random()
     
     syslog(LOG_DEBUG, "reading random file");
     /* read whole mmapped file to force caching */
-    char buf[CHUNK_SIZE];
+    char buf[10000];
     char *ptr = total_random;
     long read;
-    for (read = 0; read < random_size; read+=sizeof(buf))
+    for (read = 0; read < (random_size - sizeof(buf)); read+=sizeof(buf))
     {
         memcpy(buf, ptr, sizeof(buf));
         ptr+=sizeof(buf);
     }
-    // TODO: handle if not multiple of buf
+    //read remaining bytes that were not a multiple of 10000
+    memcpy(buf, ptr, (random_size % sizeof(buf)));
 }
 
 #ifdef HAVE_SSL
