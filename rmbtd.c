@@ -163,8 +163,8 @@ void syslog_and_print(int priority, const char *format, ...)
 
 ssize_t my_write(MY_SOCK fd, const void *buf, size_t count) {
     if (use_websocket) {
-        char buffer[CHUNK_SIZE + 14];
-        size_t out_len = CHUNK_SIZE;
+        char buffer[count + 14];
+        size_t out_len = count;
         if (count < 2 || count > (CHUNK_SIZE-3)) {
             wsMakeFrame((const uint8_t*) buf, count, (uint8_t*) buffer, &out_len, WS_BINARY_FRAME);
         }
@@ -214,7 +214,7 @@ ssize_t my_read(MY_SOCK b, void *buf, size_t count) {
         //reassemble these continuation frames
         do {
             ssize_t len = my_organic_read(b, tmpBuf, 14);
-            size_t in_len = CHUNK_SIZE;
+            size_t in_len = 0;
             if (len <= 0) {
                 return len;
             }
@@ -253,13 +253,20 @@ ssize_t my_read(MY_SOCK b, void *buf, size_t count) {
 
             t = wsParseInputFrame((uint8_t *) tmpBuf, len, &data, &in_len);
             //special frames: Closing frames
-            if (t == WS_CLOSING_FRAME) {
+            if (t == WS_CLOSING_FRAME ||
+                    t == WS_ERROR_FRAME) {
                 return 0;
                 //close connection
 
             }
 
             finFlagSet = (tmpBuf[0] & 0x80) == 0x80;            
+            //prevent buffer overflow
+            if ((totalRead + in_len) > count) {
+                syslog(LOG_DEBUG, "preventing possible buffer overflow with continuation frame %lu %ld %ld %d", totalRead, in_len, count, finFlagSet);
+                totalRead += in_len;
+                continue;
+            }
             
             //move the gathered data to the buffer at the current position
             memmove(buf + totalRead, data, in_len);
@@ -586,22 +593,93 @@ void write_err(MY_SOCK sock)
     //printf("sending ERR\n");
 }
 
-void handle_connection(int thread_num, MY_SOCK sock)
-{
-    /************************/
+/**
+ * Change the buffers for storing chunks to the given chunk size
+ * @param new_chunk_size new chunk size the buffers should be resized to
+ * @param chunk_buffer_pointer pointer to the buffer pointer which can be NULL
+ * @param size_of_buffer reference to variable where to size of the buffer should be stored
+ * @return 0 in case of errors, the new chunk size otherwise
+ */
+uint32_t change_chunk_size(uint32_t new_chunk_size, char** chunk_buffer_pointer, uint32_t* size_of_buffer) {
+    //check if the chunk size is inside the set limitations
+    if (new_chunk_size <= 0 || new_chunk_size > MAX_CHUNK_SIZE || new_chunk_size < MIN_CHUNK_SIZE) {
+        //err
+        return 0;
+    }
+
+    //set new chunk size
+    *size_of_buffer = (new_chunk_size * sizeof (char));
     
-    char buf1[CHUNK_SIZE];
-    char buf2[CHUNK_SIZE];
-    char buf3[CHUNK_SIZE];
-    char buf4[CHUNK_SIZE];
+    
+    char* chunk_buffer = *chunk_buffer_pointer;
+    char* tmp;
+    
+    //try to reallocate the desired memory, fail if this is not possible
+    tmp = realloc(chunk_buffer, *size_of_buffer);
+    if (tmp != NULL) {
+        chunk_buffer = tmp;
+    }
+    else {
+        return 0;
+    }
+    
+    //update the pointer to the new buffer location
+    *chunk_buffer_pointer = chunk_buffer;
+    
+    return new_chunk_size;
+}
+
+/**
+ * See change_chunk_size
+ * @param size new size of the buffer, given as a String
+ */
+uint32_t parse_and_change_chunk_size(char* size, char** chunk_buffer_pointer, uint32_t* size_of_buffer) {
+    //get size from string, up to 9 chars (=1 GiB)
+    uint32_t new_chunk_size;
+    int r = sscanf((char*) size, "%9lu", (long unsigned int *) &new_chunk_size);
+    if (r > 0) {
+        return change_chunk_size(new_chunk_size, chunk_buffer_pointer, size_of_buffer);
+    }
+    else {
+        return 0;
+    }
+}
+
+/**
+ * Handle a single client connection
+ * @param thread_num number of the thread, only used for debug outputs
+ * @param sock socket to be used
+ * @param chunk_buffer_pointer pointer to the buffer pointer to be used and updated
+ */
+void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer)
+{
+    /************************/    
+    //buffers for parsing of the lines
+    char buf1[MAX_LINE_LENGTH];
+    char buf2[MAX_LINE_LENGTH];
+    char buf3[MAX_LINE_LENGTH];
+    char buf4[MAX_LINE_LENGTH];
+    
+    //chunk buffer variables
+    char* chunk_buffer = NULL;
+    uint32_t chunk_size = -1;
+    uint32_t size_of_buffer = -1;
+    
+    //initialize chunk buffer with default chunk size
+    chunk_size = change_chunk_size(CHUNK_SIZE, chunk_buffer_pointer, &size_of_buffer);
+    chunk_buffer = *chunk_buffer_pointer;
+    if (chunk_size <= 0) {
+        return;
+    }
+    
     int r, s;
     
     if (use_websocket) {
         int ws;
         
-        r = my_organic_read(sock, buf1, sizeof (buf1));
+        r = my_organic_read(sock, buf1, MAX_LINE_LENGTH);
         if (r <= 0) {
-            syslog(LOG_INFO, "initialization error: %d %d", r, (int) ERR_get_error());
+            syslog(LOG_INFO, "initialization error (0): %d %d", r, (int) ERR_get_error());
             ERR_print_errors_fp(stdout);
             return;
         }
@@ -632,7 +710,7 @@ void handle_connection(int thread_num, MY_SOCK sock)
 
         }
         else {
-            syslog(LOG_INFO, "initialization error: %d %d", r, (int) ERR_get_error());
+            syslog(LOG_INFO, "initialization error (1): %d %d", r, (int) ERR_get_error());
             return;
         }
     }
@@ -640,9 +718,9 @@ void handle_connection(int thread_num, MY_SOCK sock)
     my_write(sock, GREETING, sizeof(GREETING)-1);
     my_write(sock, ACCEPT_TOKEN_NL, sizeof(ACCEPT_TOKEN_NL)-1);
     
-    r = my_readline(sock, buf1, sizeof (buf1));
+    r = my_readline(sock, buf1, MAX_LINE_LENGTH);
     if (r <= 0) {
-        syslog(LOG_INFO, "initialization error: %d %d", r, (int) ERR_get_error());
+        syslog(LOG_INFO, "initialization error (2): %d %d", r, (int) ERR_get_error());
         ERR_print_errors_fp(stdout);
         return;
     }
@@ -679,12 +757,21 @@ void handle_connection(int thread_num, MY_SOCK sock)
         int r = my_readline(sock, buf1, sizeof(buf1));
         if (r <= 0)
             return;
-        
-        int parts = sscanf((char*)buf1, "%50s %12[^\n]", buf2, buf3);
+               
+        int parts = sscanf((char*)buf1, "%50s %12s %12s[^\n]", buf2, buf3, buf4);
         
         /***** GETTIME *****/
-        if (parts == 2 && strncmp((char*)buf2, GETTIME, sizeof(GETTIME)) == 0)
+        if ((parts == 2 || parts == 3) && strncmp((char*)buf2, GETTIME, sizeof(GETTIME)) == 0)
         {
+            //update chunk size
+            if (parts == 3) {
+                chunk_size = parse_and_change_chunk_size(buf4, chunk_buffer_pointer, &size_of_buffer);
+                if (chunk_size <= 0) {
+                    return;
+                }
+                chunk_buffer = *chunk_buffer_pointer;
+            }
+            
             int seconds;
             r = sscanf((char*)buf3, "%12d", &seconds);
             if (r != 1 || seconds <=0 || seconds > MAX_SECONDS)
@@ -708,21 +795,21 @@ void handle_connection(int thread_num, MY_SOCK sock)
                 //memset(debugrandom, 0, sizeof(debugrandom));
                 do
                 {
-                    if (random_ptr + CHUNK_SIZE >= (total_random + random_size))
+                    if (random_ptr + chunk_size >= (total_random + random_size))
                         random_ptr = total_random;
                     
-                    memcpy(buf4, random_ptr, CHUNK_SIZE);
+                    memcpy(chunk_buffer, random_ptr, chunk_size);
                     
                     diffnsec = ts_diff_preserve(&timestamp);
                     if (diffnsec >= maxnsec)
-                        buf4[CHUNK_SIZE - 1] = 0xff; // signal last package
+                        chunk_buffer[chunk_size - 1] = 0xff; // signal last package
                     else
-                        buf4[CHUNK_SIZE - 1] = 0x00;
+                        chunk_buffer[chunk_size - 1] = 0x00;
                     
-                    r = my_write(sock, buf4, CHUNK_SIZE);
+                    r = my_write(sock, chunk_buffer, chunk_size);
                     
                     total_bytes += r;
-                    random_ptr += CHUNK_SIZE;
+                    random_ptr += chunk_size;
                 }
                 while (diffnsec < maxnsec && r > 0);
                 
@@ -753,8 +840,17 @@ void handle_connection(int thread_num, MY_SOCK sock)
             }
         }
         /***** GETCHUNKS *****/
-        else if (parts == 2 && strncmp((char*)buf2, GETCHUNKS, sizeof(GETCHUNKS)) == 0)
+        else if ((parts == 2 || parts == 3) && strncmp((char*)buf2, GETCHUNKS, sizeof(GETCHUNKS)) == 0)
         {
+            //update chunk size
+            if (parts == 3) {
+                chunk_size = parse_and_change_chunk_size(buf4, chunk_buffer_pointer, &size_of_buffer);
+                if (chunk_size <= 0) {
+                    return;
+                }
+                chunk_buffer = *chunk_buffer_pointer;
+            }
+            
             int chunks;
             r = sscanf((char*)buf3, "%12d", &chunks);
             if (r != 1 || chunks <=0 || chunks > MAX_CHUNKS)
@@ -775,21 +871,21 @@ void handle_connection(int thread_num, MY_SOCK sock)
                 //memset(debugrandom, 0, sizeof(debugrandom));
                 do
                 {
-                    if (random_ptr + CHUNK_SIZE >= (total_random + random_size))
+                    if (random_ptr + chunk_size >= (total_random + random_size))
                         random_ptr = total_random;
                     
-                    memcpy(buf4, random_ptr, CHUNK_SIZE);
+                    memcpy(chunk_buffer, random_ptr, chunk_size);
 
                     if (++chunks_sent >= chunks) {
-                        buf4[CHUNK_SIZE - 1] = 0xff; // signal last package
+                        (chunk_buffer)[chunk_size - 1] = 0xff; // signal last package
                     }
                     else {
-                        buf4[CHUNK_SIZE - 1] = 0x00;
+                        (chunk_buffer)[chunk_size - 1] = 0x00;
                     }
                     
-                    r = my_write(sock, buf4, CHUNK_SIZE);
+                    r = my_write(sock, chunk_buffer, chunk_size);
                     total_bytes += r;
-                    random_ptr += CHUNK_SIZE;
+                    random_ptr += chunk_size;
                 }
                 while (chunks_sent < chunks && r > 0);
                 
@@ -797,7 +893,7 @@ void handle_connection(int thread_num, MY_SOCK sock)
                     write_err(sock);
                 else
                 {
-                    int r = my_readline(sock, buf1, sizeof(buf1));
+                    int r = my_readline(sock, buf1, size_of_buffer);
                     if (r <= 0)
                         return;
                     
@@ -818,8 +914,17 @@ void handle_connection(int thread_num, MY_SOCK sock)
             }
         }
         /***** PUT *****/
-        else if (parts == 1 && (strncmp((char*)buf2, PUT, sizeof(PUT)) == 0 || strncmp((char*)buf2, PUTNORESULT, sizeof(PUTNORESULT)) == 0))
+        else if ((parts == 1 || parts == 2)  && (strncmp((char*)buf2, PUT, sizeof(PUT)) == 0 || strncmp((char*)buf2, PUTNORESULT, sizeof(PUTNORESULT)) == 0))
         {
+            //update chunk size
+            if (parts == 2) {
+                chunk_size = parse_and_change_chunk_size(buf3, chunk_buffer_pointer, &size_of_buffer);
+                if (chunk_size <= 0) {
+                    return;
+                }
+                chunk_buffer = *chunk_buffer_pointer;
+            }
+            
             int printIntermediateResult = strncmp((char*)buf2, PUT, sizeof(PUT)) == 0;
             
             my_write(sock, OK_NL, sizeof(OK_NL)-1);
@@ -835,12 +940,13 @@ void handle_connection(int thread_num, MY_SOCK sock)
             //long chunks = 0;
             do
             {
-               r = my_read(sock, buf4, sizeof(buf4));
+               r = my_read(sock, chunk_buffer, size_of_buffer);
                if (r > 0)
                {
-                   int pos_last = CHUNK_SIZE - 1 - (total_read % CHUNK_SIZE);
+                   
+                   int pos_last = size_of_buffer - 1 - (total_read % size_of_buffer);
                    if (r > pos_last)
-                       last_byte = buf4[pos_last];
+                       last_byte = chunk_buffer[pos_last];
                    total_read += r;
                }
                
@@ -1007,8 +1113,12 @@ static void *worker_thread_main(void *arg)
         }
         int sock = socket_descriptor;
 #endif
-        handle_connection(thread_num, sock);
+        char* buffer = NULL;
+        handle_connection(thread_num, sock, &buffer);
         
+        //free memory set by realloc/malloc in handle_connection
+        free(buffer);
+
         syslog(LOG_INFO, "[THR %d] closing connection", thread_num);
 
 #ifdef HAVE_SSL

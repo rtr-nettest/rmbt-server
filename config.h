@@ -28,11 +28,14 @@
 #define LISTEN_BACKLOG 10
 #define ACCEPT_QUEUE_MAX_SIZE 50
 
-#define CHUNK_SIZE 4096
+#define CHUNK_SIZE 4096 //4 KiB
 #define MAX_CHUNKS 300000 // aprox. 1.2 GiB
+#define MAX_CHUNK_SIZE 4194304 //4 MiB
+#define MIN_CHUNK_SIZE 4096 //4 KiB
+#define MAX_LINE_LENGTH 1024 //max length of String in communication
 #define MAX_SECONDS 30
 
-#define GREETING "RMBTv0.3\n"
+#define GREETING "RMBTv1.0.0\n" //semantic versioning
 
 #define PORT_NOSSL 5231
 #define PORT_SSL 443
