@@ -746,7 +746,9 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
     	syslog(LOG_INFO, "[THR %d] token NOT CHECKED; uuid: %s", thread_num, buf2);
     
     my_write(sock, OK_NL, sizeof(OK_NL)-1);
-    r = snprintf(buf1, sizeof(buf1), "CHUNKSIZE %d\n", CHUNK_SIZE);
+    
+    //Send min and max chunksize
+    r = snprintf(buf1, sizeof(buf1), "CHUNKSIZE %d %d %d\n", CHUNK_SIZE, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
     if (r <= 0) return;
     s = my_write(sock, buf1, r);
     if (r != s) return;
