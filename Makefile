@@ -18,5 +18,5 @@ run: random rmbtd
 random: 
 	dd if=/dev/urandom of=random bs=1M count=100
 
-secret.h:
-	test -e secret.h || < /dev/urandom tr -dc A-Z-a-z-0-9 | head -c100 | awk '{print "#define RMBT_SECRETKEY \"" $$1 "\""}'> secret.h
+key:
+	< /dev/urandom tr -dc A-Za-z0-9 | head -c100 | awk '{print $$1 " auto-generated key"}' >> secret.key

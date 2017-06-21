@@ -1,5 +1,7 @@
 /*******************************************************************************
  * Copyright 2012-2014 alladin-IT GmbH
+ * Copyright 2014-2016 Thomas Schreiber
+ * Copyright 2017 Rundfunk und Telekom Regulierungs-GmbH (RTR-GmbH)
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -89,6 +91,9 @@
 #define ERR_NL "ERR\n"
 #define QUIT "QUIT"
 #define BYE_NL "BYE\n"
+    
+#define MAX_SECRET_KEYS 128
+#define MAX_SECRET_KEY_LINE_LENGTH 256
 
 volatile int accept_queue[ACCEPT_QUEUE_MAX_SIZE];
 volatile int accept_queue_listen_idx[ACCEPT_QUEUE_MAX_SIZE];
@@ -119,6 +124,9 @@ struct thread_info
 int num_threads = DEFAULT_NUM_THREADS;
 
 char *total_random;
+char secret_keys[MAX_SECRET_KEYS][MAX_SECRET_KEY_LINE_LENGTH];
+char secret_keys_labels[MAX_SECRET_KEYS][MAX_SECRET_KEY_LINE_LENGTH];
+int secret_keys_count=-1;
 long random_size;
 
 long page_size;
@@ -515,30 +523,51 @@ const char *base64(const char *input, int ilen, char *output, int *olen)
     }
 }
 
-int check_token(int thread_num, const char *uuid, const char *start_time_str, const char *hmac)
+int check_token_validity_using_key(int thread_num, const char *uuid, const char *start_time_str, const char *hmac, const int key_index)
 {
     unsigned char md_buf[EVP_MAX_MD_SIZE];
     unsigned int md_size = sizeof(md_buf);
-    char *key = RMBT_SECRETKEY;
-
+    const char *key = secret_keys[key_index];
+    const char *key_label = secret_keys_labels[key_index];
+    
     unsigned char msg[128];
     int r;
     r = snprintf((char *)msg, sizeof(msg), "%s_%s", uuid, start_time_str);
     if (r < 0)
         return 0;
-    
+
     char base64_buf[64*2];
     int base64_buf_size = sizeof(base64_buf);
-    
+
     unsigned char *md = HMAC(EVP_sha1(), key, strlen(key), msg, strnlen((char*)msg, sizeof(msg)), md_buf, &md_size);
     if (md == NULL)
-    	return -1;
+        return -1;
     base64((char*)md, md_size, base64_buf, &base64_buf_size);
-    
+
     int result = strncmp(base64_buf, hmac, base64_buf_size);
+    if (result == 0)
+    {
+        syslog(LOG_INFO, "[THR %d] Token was accepted by key %s", thread_num, key_label);
+    }
+    return result;
+}
+
+int check_token(int thread_num, const char *uuid, const char *start_time_str, const char *hmac)
+{
+    int result = -1;
+    int i=0;
+    for (i=0;i<secret_keys_count;i++) {
+        int check = check_token_validity_using_key(thread_num, uuid, start_time_str, hmac, i);
+        if (check == 0) {
+            result = 0;
+            break;
+        }
+    }
+
+    
     if (result != 0)
     {
-    	syslog(LOG_ERR, "[THR %d] got illegal token: \"%s\", got hmac: \"%s\", expected: \"%s\"", thread_num, uuid, hmac, base64_buf);
+    	syslog(LOG_ERR, "[THR %d] got illegal token: \"%s\"", thread_num, uuid);
     }
     else
     {
@@ -1243,6 +1272,59 @@ void mmap_random()
     memcpy(buf, ptr, (random_size % sizeof(buf)));
 }
 
+/**
+ * Read the key file "secret.key" linewise, add a maximum
+ * of MAX_SECRET_KEYS keys
+ * File format:
+ * 
+ * key1 label\n
+ * key2 label\n
+ * 
+ * where keyX is the key used for calculating the hmac,
+ * "label" will be printed into the syslog when the key is used
+ */
+void read_secret_keys()
+{
+    syslog(LOG_DEBUG, "opening secret keys file");
+    FILE *keyfile = NULL; 
+
+    int i = 0, j = 0;
+    
+    keyfile = fopen("secret.key", "r");
+    if (keyfile == NULL)
+    {
+        syslog_and_print(LOG_ERR, "error while opening secret.key: %m");
+        exit(EXIT_FAILURE);
+    }
+    
+    while(fgets(secret_keys[i], MAX_SECRET_KEY_LINE_LENGTH, keyfile)) {
+        int len = strlen(secret_keys[i]);
+        
+        /* get rid of ending \n from fgets */
+        secret_keys[i][len - 1] = '\0';
+        
+        //maybe empty line or comment
+        if (strlen(secret_keys[i]) < 5) {
+            continue;
+        }
+        
+        /* if a space character is given inside a string, ignore everything after that */
+        secret_keys_labels[i][0] = '\0';
+        for (j=0;j<strlen(secret_keys[i]);j++) {
+            if (secret_keys[i][j] == ' ') {
+                secret_keys[i][j] = '\0';
+                memcpy(secret_keys_labels[i], &secret_keys[i][j+1], len - strlen(secret_keys[i]));
+                break;
+            }
+        }
+        
+        i++;
+    }
+
+    secret_keys_count = i;
+    syslog(LOG_INFO, "read %d secret keys from file", secret_keys_count);
+}
+
 #ifdef HAVE_SSL
 
 static void lock_callback(int mode, int type, char *file, int line)
@@ -1587,6 +1669,7 @@ int main(int argc, char **argv)
     page_size = sysconf(_SC_PAGE_SIZE);
 	
     mmap_random();
+    read_secret_keys();
 	
 #ifdef HAVE_SSL
     init_ssl(cert_path, key_path);
