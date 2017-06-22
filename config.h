@@ -13,9 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  ******************************************************************************/
-
-// define RMBT_SECRETKEY
-#include "secret.h"
  
 #define DEFAULT_NUM_THREADS   200 
 
