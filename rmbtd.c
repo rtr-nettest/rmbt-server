@@ -1106,6 +1106,17 @@ static void *worker_thread_main(void *arg)
             syslog(LOG_ERR, "[THR %d] error during inet_ntop: %m", thread_num);
             continue;
         }
+        
+        //anonymize IP so that no personal data is stored in the log files
+        char* last_occurance = strrchr(buf, '.');
+        if (last_occurance == NULL) {
+            //IPv6
+            last_occurance = strrchr(buf, ':');
+        }
+        if (last_occurance != NULL) {
+            *last_occurance = '\0';
+        }
+        
         syslog(LOG_INFO, "[THR %d] connection from: [%s]:%d", thread_num, buf, peer_port);
         
         int use_ssl = listens[listen_idx].use_ssl;
