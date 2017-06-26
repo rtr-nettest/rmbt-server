@@ -42,6 +42,9 @@ command line arguments:
  -D     enable debug logging (no argument)
 
  -w     use as websocket server (no argument)
+ 
+ -v     behave as version (v) for serving older clients
+        example: "0.3"
 
 ```
 

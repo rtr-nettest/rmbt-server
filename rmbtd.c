@@ -131,6 +131,7 @@ long random_size;
 
 long page_size;
 char use_websocket = 0;
+int behave_as_version = 0; //MAYOR*1000 + MINOR
 
 void print_help()
 {
@@ -148,6 +149,8 @@ void print_help()
 			" -d     fork into background as daemon (no argument)\n\n"
 			" -D     enable debug logging (no argument)\n\n"
 			" -w     use as websocket server (no argument)\n\n"
+			" -v     behave as version (v) for serving older clients\n"
+			"        example: \"0.3\"\n\n"
 			"Required are -c,-k and at least one -l/-L option\n",
 			DEFAULT_NUM_THREADS);
 }
@@ -744,7 +747,11 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
         }
     }
     
-    my_write(sock, GREETING, sizeof(GREETING)-1);
+    if (behave_as_version == 3) 
+        my_write(sock, "RMBTv0.3\n", sizeof("RMBTv0.3\n")-1);
+    else 
+        my_write(sock, GREETING, sizeof(GREETING)-1);
+    
     my_write(sock, ACCEPT_TOKEN_NL, sizeof(ACCEPT_TOKEN_NL)-1);
     
     r = my_readline(sock, buf1, MAX_LINE_LENGTH);
@@ -777,7 +784,11 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
     my_write(sock, OK_NL, sizeof(OK_NL)-1);
     
     //Send min and max chunksize
-    r = snprintf(buf1, sizeof(buf1), "CHUNKSIZE %d %d %d\n", CHUNK_SIZE, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
+    if (behave_as_version == 3) 
+        r = snprintf(buf1, sizeof(buf1), "CHUNKSIZE %d\n", CHUNK_SIZE);
+    else 
+        r = snprintf(buf1, sizeof(buf1), "CHUNKSIZE %d %d %d\n", CHUNK_SIZE, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
+
     if (r <= 0) return;
     s = my_write(sock, buf1, r);
     if (r != s) return;
@@ -1484,7 +1495,7 @@ int main(int argc, char **argv)
     int i;
     int matched;
     int size;
-    while ((c = getopt (argc, argv, "l:L:c:k:t:u:p:dDw")) != -1)
+    while ((c = getopt (argc, argv, "l:L:c:k:t:u:p:v:dDw")) != -1)
         switch (c)
         {
         case 'l': /* listen */
@@ -1541,6 +1552,27 @@ int main(int argc, char **argv)
             size = strlen(optarg) + 1;
             cert_path = malloc(size);
             strncpy(cert_path, optarg, size);
+            break;
+            
+        case 'v': /* behave as an old protocol version for backwards compatibility */
+            if (behave_as_version != 0) 
+            {
+                syslog_and_print(LOG_ERR, "only one -v is allowed");
+                print_help();
+                return EXIT_FAILURE;
+            }
+            
+            size = strlen(optarg) +1;
+            if (strncmp(optarg, "0.3", strlen("0.3")) == 0) 
+            {
+                behave_as_version = 3;
+            }
+            else 
+            {
+                syslog_and_print(LOG_ERR, "unsupported version for backwards compatibility: >%s<", optarg);
+                print_help();
+                return EXIT_FAILURE;
+            }
             break;
             
         case 'k': /* key */
