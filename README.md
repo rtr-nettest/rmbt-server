@@ -2,24 +2,29 @@ RMBT Test Server
 ================
 
 > This project contains the RMBT Test Server for conducting measurements based on 
-  the RMBT protocol, either via TCP sockets or via the WebSocket protocol.
+  the RMBT protocol. Clients can use it either directly via TCP sockets or based on 
+  the WebSocket protocol.
 
 Usage
 -----
 
-Generate the random file, your secret key and the server using
+Generate the random file, your secret key and the server executable using
+
 ```
 > make random
 > make key
 > make all
 ```
 
-For supporting multiple keys, each key can be placed in a line of the `secret.key` file,
-next to a label which will be printed into the syslog each time a client identifies using this key.
+The server uses keys to authenticate clients, as specified in the RMBT protocol. These keys that  
+are loaded from the `secret.key` file at startup. Each line in this file contains the key as well 
+as a space-separated label, which will be sent to the syslog each time a client identifies 
+using this key.
 
 For running the server, either use the supplied init.d scripts or the ```rmbtd``` executable.
 
 Parameters:
+
 ```
 ==== rmbtd ====
 command line arguments:
