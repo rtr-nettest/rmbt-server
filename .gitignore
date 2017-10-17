@@ -1,3 +1,5 @@
 rmbtd
 random
-core
+secret.key
+server.crt
+server.key

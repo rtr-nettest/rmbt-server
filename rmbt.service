@@ -1,0 +1,16 @@
+[Unit]
+Description=RMBTd
+After=network.target auditd.service
+StartLimitIntervalSec=0
+
+[Service]
+# supply userid, ipv4/v6 addresses and port numbers
+WorkingDirectory=/home/userid/server
+ExecStart=@/home/userid/server/rmbtd rmbt -c server.crt -k server.key -u userid -L ipv4_address:port# -L [ipv6_address]:port#
+TimeoutStopSec=60
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+

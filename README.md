@@ -5,6 +5,13 @@ RMBT Test Server
   the RMBT protocol. Clients can communicate either directly via TCP sockets or based on 
   the WebSocket protocol.
 
+Prerequisites
+-------------
+
+Needed packages:
+- build-essential
+- libssl-dev
+
 Usage
 -----
 
@@ -21,7 +28,7 @@ are loaded from the `secret.key` file at startup. Each line in this file contain
 as a space-separated label, which will be sent to the syslog each time a client identifies 
 using this key.
 
-For running the server, either use the supplied init.d scripts or the ```rmbtd``` executable.
+For running the server, either use the supplied /etc/systemd/system service scripts or the ```rmbtd``` executable.
 
 Parameters:
 
