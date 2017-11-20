@@ -33,7 +33,7 @@
 #  undef DEBUG
 #endif
 
-#define LITTLE_ENDIAN
+#define LITTLE_ENDIAN __LITTLE_ENDIAN
 
 /********************************************************************************************************/
 
