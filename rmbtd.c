@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <string.h>
+#include <regex.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <syslog.h>
@@ -130,7 +131,7 @@ int secret_keys_count=-1;
 long random_size;
 
 long page_size;
-char use_websocket = 0;
+char use_http = 0;
 int behave_as_version = 0; //MAYOR*1000 + MINOR
 
 void print_help()
@@ -172,7 +173,7 @@ void syslog_and_print(int priority, const char *format, ...)
     va_end(va1);
 }
 
-ssize_t my_write(MY_SOCK fd, const void *buf, size_t count) {
+ssize_t my_write(MY_SOCK fd, const void *buf, size_t count, char use_websocket) {
     if (use_websocket) {
         char buffer[count + 14];
         size_t out_len = count;
@@ -212,7 +213,7 @@ ssize_t my_write(MY_SOCK fd, const void *buf, size_t count) {
     }
 }
 
-ssize_t my_read(MY_SOCK b, void *buf, size_t count) {   
+ssize_t my_read(MY_SOCK b, void *buf, size_t count, char use_websocket) {
     if (use_websocket) {
         //temporary buffer with enough space for the Frame
         uint8_t tmpBuf[count+100];
@@ -295,7 +296,7 @@ ssize_t my_read(MY_SOCK b, void *buf, size_t count) {
 }
 
 
-int my_readline(MY_SOCK sock, const char *buf, int size)
+int my_readline(MY_SOCK sock, const char *buf, int size, char use_websocket)
 {
     const char *buf_ptr = buf;
     int size_remain = size;
@@ -304,7 +305,7 @@ int my_readline(MY_SOCK sock, const char *buf, int size)
     
     do
     {
-        r = my_read(sock, (void*)buf_ptr, size_remain);
+        r = my_read(sock, (void*)buf_ptr, size_remain, use_websocket);
         if (r > 0)
         {
             nl_ptr = memchr(buf_ptr, NEWLINE, r);
@@ -619,9 +620,9 @@ void print_speed(unsigned long nsecs, unsigned long data_size)
 }
 */
 
-void write_err(MY_SOCK sock)
+void write_err(MY_SOCK sock, char use_websocket)
 {
-    my_write(sock, ERR_NL, sizeof(ERR_NL)-1);
+    my_write(sock, ERR_NL, sizeof(ERR_NL)-1, use_websocket);
     //printf("sending ERR\n");
 }
 
@@ -685,6 +686,8 @@ uint32_t parse_and_change_chunk_size(char* size, char** chunk_buffer_pointer, ui
  */
 void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer)
 {
+    char use_websocket = 0;
+
     /************************/    
     //buffers for parsing of the lines
     char buf1[MAX_LINE_LENGTH];
@@ -706,57 +709,86 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
     
     int r, s;
     
-    if (use_websocket) {
-        int ws;
+    if (use_http) {
+        int get;
+
         
         r = my_organic_read(sock, buf1, MAX_LINE_LENGTH);
         if (r <= 0) {
-            syslog(LOG_INFO, "initialization error (0): %d %d", r, (int) ERR_get_error());
+            syslog(LOG_INFO, "initialization error: connection reset rmbtws: %d %d", r, (int) ERR_get_error());
             ERR_print_errors_fp(stdout);
             return;
         }
 
         //websocket handshake?
-        ws = strncmp((char*) buf1, "GET ", 4);
-        if (ws == 0) {
-            
-            struct handshake hs;
-            nullHandshake(&hs);
+        get = strncmp((char*) buf1, "GET ", 4);
+        if (get == 0) {
 
-            //try to parse handshake
-            enum wsFrameType handshake = wsParseHandshake((const uint8_t*) buf1, r, &hs);
+            regex_t regex;
+            int reti;
 
-            if (handshake != WS_OPENING_FRAME) {
-                syslog(LOG_INFO, "invalid handshake");
+            /* Compile regular expression */
+            reti = regcomp(&regex, "^upgrade: websocket", REG_ICASE | REG_NEWLINE);
+            if (reti) {
+                fprintf(stderr, "Could not compile regex\n");
                 return;
             }
 
-            //generate and send the handshake response
-            size_t framesize = CHUNK_SIZE;
-            wsGetHandshakeAnswer(&hs, (uint8_t*) buf1, &framesize);
-            //syslog(LOG_INFO, "init Websocket handshake3 %d >> %s <<", (int) framesize, buf1);
-            //server response
-            my_organic_write(sock, buf1, framesize);
+            /* Execute regular expression */
+            reti = regexec(&regex, buf1, 0, NULL, 0);
+            regfree(&regex); //free memory
 
-            //syslog(LOG_INFO, "send answer");
+            if (reti == REG_NOMATCH) { //No match -> No websocket
+                syslog(LOG_INFO, "[THR %d] Websocket mode, but no websocket request", thread_num);
+                use_websocket = 0;
+            } else if (reti == 0) { //Match -> Websocket
+                struct handshake hs;
+                nullHandshake(&hs);
 
+                //try to parse handshake
+                enum wsFrameType handshake = wsParseHandshake((const uint8_t *) buf1, r, &hs);
+
+                if (handshake != WS_OPENING_FRAME) {
+                    syslog(LOG_INFO, "[THR %d] invalid websocket handshake", thread_num);
+                    return;
+                }
+
+                //generate and send the handshake response
+                size_t framesize = CHUNK_SIZE;
+                wsGetHandshakeAnswer(&hs, (uint8_t *) buf1, &framesize);
+                //syslog(LOG_INFO, "init Websocket handshake3 %d >> %s <<", (int) framesize, buf1);
+                //server response
+                my_organic_write(sock, buf1, framesize);
+
+                //syslog(LOG_INFO, "send answer");
+                use_websocket = 1;
+            } else {
+                syslog(LOG_INFO, "[THR %d] initialization error: upgrade-regex could not be evaluated: %d %d", thread_num, r, (int) ERR_get_error());
+                return;
+            }
         }
         else {
-            syslog(LOG_INFO, "initialization error (1): %d %d", r, (int) ERR_get_error());
+            syslog(LOG_INFO, "[THR %d] initialization error: connection reset rmbt: %d %d", thread_num, r, (int) ERR_get_error());
             return;
         }
     }
     
     if (behave_as_version == 3) 
-        my_write(sock, "RMBTv0.3\n", sizeof("RMBTv0.3\n")-1);
+        my_write(sock, "RMBTv0.3\n", sizeof("RMBTv0.3\n")-1, use_websocket);
     else 
-        my_write(sock, GREETING, sizeof(GREETING)-1);
+        my_write(sock, GREETING, sizeof(GREETING)-1, use_websocket);
     
-    my_write(sock, ACCEPT_TOKEN_NL, sizeof(ACCEPT_TOKEN_NL)-1);
+    my_write(sock, ACCEPT_TOKEN_NL, sizeof(ACCEPT_TOKEN_NL)-1, use_websocket);
     
-    r = my_readline(sock, buf1, MAX_LINE_LENGTH);
+    r = my_readline(sock, buf1, MAX_LINE_LENGTH, use_websocket);
     if (r <= 0) {
-        syslog(LOG_INFO, "initialization error (2): %d %d", r, (int) ERR_get_error());
+        if (use_websocket) {
+            syslog(LOG_INFO, "[THR %d] initialization error: client closed connection after handshake: %d %d",
+                   thread_num, r, (int) ERR_get_error());
+        } else {
+            syslog(LOG_INFO, "[THR %d] initialization error: client closed connection after greeting: %d %d",
+                   thread_num, r, (int) ERR_get_error());
+        }
         ERR_print_errors_fp(stdout);
         return;
     }
@@ -781,7 +813,7 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
     else
     	syslog(LOG_INFO, "[THR %d] token NOT CHECKED; uuid: %s", thread_num, buf2);
     
-    my_write(sock, OK_NL, sizeof(OK_NL)-1);
+    my_write(sock, OK_NL, sizeof(OK_NL)-1, use_websocket);
     
     //Send min and max chunksize
     if (behave_as_version == 3) 
@@ -790,13 +822,13 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
         r = snprintf(buf1, sizeof(buf1), "CHUNKSIZE %d %d %d\n", CHUNK_SIZE, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
 
     if (r <= 0) return;
-    s = my_write(sock, buf1, r);
+    s = my_write(sock, buf1, r, use_websocket);
     if (r != s) return;
     
     for (;;)
     {
-        my_write(sock, ACCEPT_GET_PUT_PING_NL, sizeof(ACCEPT_GET_PUT_PING_NL)-1);
-        int r = my_readline(sock, buf1, sizeof(buf1));
+        my_write(sock, ACCEPT_GET_PUT_PING_NL, sizeof(ACCEPT_GET_PUT_PING_NL)-1, use_websocket);
+        int r = my_readline(sock, buf1, sizeof(buf1), use_websocket);
         if (r <= 0)
             return;
                
@@ -817,7 +849,7 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
             int seconds;
             r = sscanf((char*)buf3, "%12d", &seconds);
             if (r != 1 || seconds <=0 || seconds > MAX_SECONDS)
-                write_err(sock);
+                write_err(sock, use_websocket);
             else
             {
                 long long maxnsec = (long long)seconds * 1000000000ull;
@@ -848,7 +880,7 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
                     else
                         chunk_buffer[chunk_size - 1] = 0x00;
                     
-                    r = my_write(sock, chunk_buffer, chunk_size);
+                    r = my_write(sock, chunk_buffer, chunk_size, use_websocket);
                     
                     total_bytes += r;
                     random_ptr += chunk_size;
@@ -858,10 +890,10 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
                 //printf("TIME reached, %lu bytes sent.\n", total_bytes);
                 
                 if (r <= 0)
-                    write_err(sock);
+                    write_err(sock, use_websocket);
                 else
                 {
-                    int r = my_readline(sock, buf1, sizeof(buf1));
+                    int r = my_readline(sock, buf1, sizeof(buf1), use_websocket);
                     if (r <= 0)
                         return;
                     
@@ -873,11 +905,11 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
                         //print_speed(nsecs_total, total_bytes);
                         r = snprintf((char*)buf3, sizeof(buf3), "TIME %lld\n", nsecs_total);
                         if (r <= 0) return;
-                        s = my_write(sock, buf3, r);
+                        s = my_write(sock, buf3, r, use_websocket);
                         if (r != s) return;
                     }
                     else
-                        write_err(sock);
+                        write_err(sock, use_websocket);
                 }
             }
         }
@@ -896,7 +928,7 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
             int chunks;
             r = sscanf((char*)buf3, "%12d", &chunks);
             if (r != 1 || chunks <=0 || chunks > MAX_CHUNKS)
-                write_err(sock);
+                write_err(sock, use_websocket);
             else
             {
                 
@@ -925,17 +957,17 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
                         (chunk_buffer)[chunk_size - 1] = 0x00;
                     }
                     
-                    r = my_write(sock, chunk_buffer, chunk_size);
+                    r = my_write(sock, chunk_buffer, chunk_size, use_websocket);
                     total_bytes += r;
                     random_ptr += chunk_size;
                 }
                 while (chunks_sent < chunks && r > 0);
                 
                 if (r <= 0 || s <= 0)
-                    write_err(sock);
+                    write_err(sock, use_websocket);
                 else
                 {
-                    int r = my_readline(sock, buf1, size_of_buffer);
+                    int r = my_readline(sock, buf1, size_of_buffer, use_websocket);
                     if (r <= 0)
                         return;
                     
@@ -947,11 +979,11 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
                         //print_speed(nsecs_total, total_bytes);
                         r = snprintf((char*)buf3, sizeof(buf3), "TIME %lld\n", nsecs_total);
                         if (r <= 0) return;
-                        s = my_write(sock, buf3, r);
+                        s = my_write(sock, buf3, r, use_websocket);
                         if (r != s) return;
                     }
                     else
-                        write_err(sock);
+                        write_err(sock, use_websocket);
                 }
             }
         }
@@ -969,7 +1001,7 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
             
             int printIntermediateResult = strncmp((char*)buf2, PUT, sizeof(PUT)) == 0;
             
-            my_write(sock, OK_NL, sizeof(OK_NL)-1);
+            my_write(sock, OK_NL, sizeof(OK_NL)-1, use_websocket);
             
             /* start time measurement */
             struct timespec timestamp;
@@ -982,7 +1014,7 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
             //long chunks = 0;
             do
             {
-               r = my_read(sock, chunk_buffer, size_of_buffer);
+               r = my_read(sock, chunk_buffer, size_of_buffer, use_websocket);
                if (r > 0)
                {
                    
@@ -1001,7 +1033,7 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
                        last_diffnsec = diffnsec;
                        s = snprintf((char*)buf3, sizeof(buf3), "TIME %lld BYTES %ld\n", diffnsec, total_read);
                        if (s <= 0) return;
-                       r = my_write(sock, buf3, s);
+                       r = my_write(sock, buf3, s, use_websocket);
                        if (r != s) return;
                    }
                }
@@ -1009,21 +1041,21 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
             while (r > 0 && last_byte != 0xff);
             long long nsecs = ts_diff(&timestamp);
             if (r <= 0)
-                write_err(sock);
+                write_err(sock, use_websocket);
             else
             {
                 //print_speed(nsecs, total_read);
                 
                 r = snprintf((char*)buf3, sizeof(buf3), "TIME %lld\n", nsecs);
                 if (r <= 0) return;
-                s = my_write(sock, buf3, r);
+                s = my_write(sock, buf3, r, use_websocket);
                 if (r != s) return;
             }
         }
         /***** QUIT *****/
         else if (strncmp((char*)buf2, QUIT, sizeof(QUIT)) == 0)
         {
-            my_write(sock, BYE_NL, sizeof(BYE_NL)-1);
+            my_write(sock, BYE_NL, sizeof(BYE_NL)-1, use_websocket);
             return;
         }
         /***** PING *****/
@@ -1033,8 +1065,8 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
             struct timespec timestamp;
             fill_ts(&timestamp);
             
-            my_write(sock, PONG_NL, sizeof(PONG_NL)-1);
-            int r = my_readline(sock, buf1, sizeof(buf1));
+            my_write(sock, PONG_NL, sizeof(PONG_NL)-1, use_websocket);
+            int r = my_readline(sock, buf1, sizeof(buf1), use_websocket);
             if (r <= 0)
                 return;
             
@@ -1042,19 +1074,19 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
             long long nsecs = ts_diff(&timestamp);
             
             if (strncmp((char*)buf1, OK, sizeof(OK)) != 0)
-                write_err(sock);
+                write_err(sock, use_websocket);
             else
             {
                 r = snprintf((char*)buf3, sizeof(buf3), "TIME %lld\n", nsecs);
                 if (r <= 0) return;
-                s = my_write(sock, buf3, r);
+                s = my_write(sock, buf3, r, use_websocket);
                 if (r != s) return;
                 
                 //print_milsecs(nsecs);
             }
         }
         else
-            write_err(sock);
+            write_err(sock, use_websocket);
     
         /************************/
     }
@@ -1632,7 +1664,7 @@ int main(int argc, char **argv)
             break;
             */
         case 'w':
-            use_websocket = 1;
+            use_http = 1;
             syslog_and_print(LOG_INFO, "starting as websocket server");
             break;
         case '?':
