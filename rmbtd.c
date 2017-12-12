@@ -723,25 +723,33 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
         //websocket handshake?
         get = strncmp((char*) buf1, "GET ", 4);
         if (get == 0) {
-
-            regex_t regex;
-            int reti;
+            //use two different regular expressions, since handling differs and working with groups in C can be avoided
+            regex_t regex_ws, regex_rmbt;
+            int reti_ws, reti_rmbt;
 
             /* Compile regular expression */
-            reti = regcomp(&regex, "^upgrade: websocket", REG_ICASE | REG_NEWLINE);
-            if (reti) {
+            reti_ws = regcomp(&regex_ws, "^upgrade: websocket", REG_ICASE | REG_NEWLINE);
+            reti_rmbt = regcomp(&regex_rmbt, "^upgrade: rmbt", REG_ICASE | REG_NEWLINE);
+            if (reti_ws || reti_rmbt) {
                 fprintf(stderr, "Could not compile regex\n");
                 return;
             }
 
             /* Execute regular expression */
-            reti = regexec(&regex, buf1, 0, NULL, 0);
-            regfree(&regex); //free memory
+            reti_ws = regexec(&regex_ws, buf1, 0, NULL, 0);
+            reti_rmbt = regexec(&regex_rmbt, buf1, 0, NULL, 0);
+            regfree(&regex_ws); //free memory
+            regfree(&regex_rmbt);
 
-            if (reti == REG_NOMATCH) { //No match -> No websocket
-                syslog(LOG_INFO, "[THR %d] Websocket mode, but no websocket request", thread_num);
-                use_websocket = 0;
-            } else if (reti == 0) { //Match -> Websocket
+            if (reti_ws == REG_NOMATCH && reti_rmbt == REG_NOMATCH) { //No match -> No websocket
+                syslog(LOG_INFO, "[THR %d] No HTTP upgrade to websocket/rmbt", thread_num);
+                my_write(sock, GREETING, sizeof(GREETING)-1, use_websocket);
+                return;
+            } else if (reti_rmbt == 0) { //Match -> Websocket
+                syslog(LOG_DEBUG, "[THR %d] Upgrade to rmbt", thread_num);
+                use_websocket=0;
+            } else if (reti_ws == 0) {
+                syslog(LOG_DEBUG, "[THR %d] Upgrade to websocket", thread_num);
                 struct handshake hs;
                 nullHandshake(&hs);
 
