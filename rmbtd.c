@@ -79,6 +79,7 @@
 #endif
 
 #define NEWLINE '\n'
+#define CONNECTION_UPGRADE "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: RMBT\r\n\r\n"
 #define GETTIME "GETTIME"
 #define GETCHUNKS "GETCHUNKS"
 #define PUT "PUT"
@@ -747,6 +748,10 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
                 return;
             } else if (reti_rmbt == 0) { //Match -> Websocket
                 syslog(LOG_DEBUG, "[THR %d] Upgrade to rmbt", thread_num);
+
+                //Send HTTP Upgrade command
+                my_write(sock, CONNECTION_UPGRADE, sizeof(CONNECTION_UPGRADE), use_websocket);
+
                 use_websocket=0;
             } else if (reti_ws == 0) {
                 syslog(LOG_DEBUG, "[THR %d] Upgrade to websocket", thread_num);
