@@ -724,7 +724,7 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
         //websocket handshake?
         get = strncmp((char*) buf1, "GET ", 4);
         if (get == 0) {
-            //use two different regular expressions, since handling differs and working with groups in C can be avoided
+            //use two different regular expressions, since handling with groups in C can be avoided
             regex_t regex_ws, regex_rmbt;
             int reti_ws, reti_rmbt;
 
@@ -732,7 +732,7 @@ void handle_connection(int thread_num, MY_SOCK sock, char** chunk_buffer_pointer
             reti_ws = regcomp(&regex_ws, "^upgrade: websocket", REG_ICASE | REG_NEWLINE);
             reti_rmbt = regcomp(&regex_rmbt, "^upgrade: rmbt", REG_ICASE | REG_NEWLINE);
             if (reti_ws || reti_rmbt) {
-                fprintf(stderr, "Could not compile regex\n");
+                syslog(LOG_ERR, "Could not compile regex\n");
                 return;
             }
 
