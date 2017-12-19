@@ -23,6 +23,8 @@ Generate the random file, your secret key and the server executable using
 > make all
 ```
 
+For production use, an optimized build can be generated using ```make server-prod```.
+
 The server uses keys to authenticate clients, as specified in the RMBT protocol. These keys that 
 are loaded from the `secret.key` file at startup. Each line in this file contains the key as well 
 as a space-separated label, which will be sent to the syslog each time a client identifies 
@@ -59,6 +61,74 @@ command line arguments:
         example: "0.3"
 
 ```
+
+Client communication
+--------------------
+
+The server can be used in HTTP mode or in the legacy plain mode, depending on the usage of the ```-w``` parameter.
+
+### Usage in HTTP or WebSocket mode
+
+If the ```-w``` parameter is supplied when starting the server, the server will listen for
+HTTP GET requests on the specified TCP port. Clients can request a connection upgrade to
+either ```RMBT``` or ```websocket``` by sending a ```Connection: Upgrade``` header
+as specified in RFC 2616.
+
+
+#### HTTP Upgrade to RMBT
+
+Clients can request an upgrade plain RMBT by adding a ```Upgrade: RMBT``` header. A sample 
+communication is given below. Additionally, the client may add an ```RMBT-Version```-header, 
+indicating the most recent compatible server version.
+
+
+Request from a client to the server
+```
+GET /rmbt HTTP/1.1
+Connection: Upgrade
+Upgrade: RMBT
+RMBT-Version: 1.2.0
+```
+
+Response from the server
+```
+HTTP/1.1 101 Switching Protocols
+Connection: Upgrade
+Upgrade: RMBT
+```
+
+After this handshake is complete, the communication will continue using plain RMBT.
+
+#### HTTP Upgrade to WebSocket
+
+Clients can request RMBT communication wrapped in the WebSocket protocol. For this,
+a handshake as specified in RFC 6455 is used. A sample communication is given below.
+
+Request from a client to the server
+```
+GET /rmbt HTTP/1.1
+Connection: Upgrade
+Upgrade: websocket
+Sec-WebSocket-Version: 13
+Sec-WebSocket-Key: 38VqBEsiw/GKJUPnSGNAUA==
+```
+
+Response from the server
+```
+Connection: Upgrade
+Sec-WebSocket-Accept: V8nixtUGE3Gfzy3Qix9R0svp05M=
+Upgrade: websocket
+```
+
+After this handshake is complete, the communication will continue using RMBT wrapped
+in WebSocket frames.  
+
+### Usage without HTTP
+
+If the server is started without the ```-w``` parameter, communication is done by relying 
+on plain TCP sockets. As soon as the connection is established, the server will initiate
+the communication by sending the string ```RMBT<VERSION>``` whereas ```<VERSION>``` will contain
+the current version of the server software, e.g. ```v1.2.0```.
 
 Related materials
 -----------------
