@@ -115,6 +115,7 @@ Sec-WebSocket-Key: 38VqBEsiw/GKJUPnSGNAUA==
 
 Response from the server
 ```
+HTTP/1.1 101 Switching Protocols
 Connection: Upgrade
 Sec-WebSocket-Accept: V8nixtUGE3Gfzy3Qix9R0svp05M=
 Upgrade: websocket
