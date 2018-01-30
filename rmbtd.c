@@ -1741,9 +1741,9 @@ int main(int argc, char **argv)
 
     setlogmask(LOG_UPTO(_debug ? LOG_DEBUG : LOG_INFO));
 
-	syslog_and_print(LOG_INFO, "starting...");
-	
-	syslog(LOG_DEBUG, "debug logging on");
+    syslog_and_print(LOG_INFO, "starting...");
+    syslog_and_print(LOG_INFO, "version: %s", GREETING);
+    syslog(LOG_DEBUG, "debug logging on");
         
     struct sigaction action;
     memset(&action, 0, sizeof(struct sigaction));
