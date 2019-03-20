@@ -8,11 +8,24 @@ RMBT Test Server
 Docker
 ------
 
+### Server
+
 To simply run the server (**with diabled token check!**) with Docker, run:
 
 ```
 docker run -v rmbtd-config:/config -p 8081-8082:8081-8082 lwimmer/rmbt-server
 ```
+
+### Client
+
+`rmbt-client` can be easily used as a CLI measurement client in Docker:
+
+```
+docker run lwimmer/rmbt-client -h <server hostname> -p <server port> -s ''
+```
+
+For more information see https://github.com/lwimmer/rmbt-client.
+
 
 Prerequisites
 -------------
