@@ -8,7 +8,7 @@ RMBT Test Server
 Docker
 ------
 
-To simply run the server (with diabled token check!) with Docker, run:
+To simply run the server (**with diabled token check!**) with Docker, run:
 
 ```
 docker run -v rmbtd-config:/config -p 8081-8082:8081-8082 lwimmer/rmbt-server
