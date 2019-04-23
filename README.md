@@ -5,17 +5,6 @@ RMBT Test Server
   the RMBT protocol. Clients can communicate either directly via TCP sockets or based on 
   the WebSocket protocol.
 
-Docker
-------
-
-### Server
-
-To simply run the server (**with diabled token check!**) with Docker, run:
-
-```
-docker run -v rmbtd-config:/config -p 8081-8082:8081-8082 rtrnettest/rmbt-server
-```
-
 Prerequisites
 -------------
 
@@ -71,6 +60,14 @@ command line arguments:
  -v     behave as version (v) for serving older clients
         example: "0.3"
 
+```
+
+### Usage with Docker
+
+To simply run the server (**with diabled token check!**) with Docker, run:
+
+```
+docker run -v rmbtd-config:/config -p 8081-8082:8081-8082 rtrnettest/rmbt-server
 ```
 
 Client communication
