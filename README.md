@@ -13,19 +13,8 @@ Docker
 To simply run the server (**with diabled token check!**) with Docker, run:
 
 ```
-docker run -v rmbtd-config:/config -p 8081-8082:8081-8082 lwimmer/rmbt-server
+docker run -v rmbtd-config:/config -p 8081-8082:8081-8082 rtrnettest/rmbt-server
 ```
-
-### Client
-
-`rmbt-client` can be easily used as a CLI measurement client in Docker:
-
-```
-docker run lwimmer/rmbt-client -h <server hostname> -p <server port> -s ''
-```
-
-For more information see https://github.com/lwimmer/rmbt-client.
-
 
 Prerequisites
 -------------
@@ -159,7 +148,7 @@ Related materials
 * [RMBT specification](https://www.netztest.at/doc/)
 * [RMBTws Client](https://github.com/rtr-nettest/rmbtws)
 * [RTR-Netztest/open-rmbt](https://github.com/rtr-nettest/open-rmbt)
-  
+* [RMBT C client (3<sup>rd</sup> party)](https://github.com/lwimmer/rmbt-client)  
 
 Get in Touch
 ------------
