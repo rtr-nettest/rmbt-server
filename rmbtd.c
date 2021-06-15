@@ -100,7 +100,9 @@
 volatile int accept_queue[ACCEPT_QUEUE_MAX_SIZE];
 volatile int accept_queue_listen_idx[ACCEPT_QUEUE_MAX_SIZE];
 volatile int accept_queue_size, accept_queue_start = 0;
-pthread_mutex_t accept_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+pthread_mutex_t signals_mutex = PTHREAD_MUTEX_INITIALIZER; // mutex to work with signals
+pthread_mutex_t accept_queue_mutex = PTHREAD_MUTEX_INITIALIZER; // mutex to work with queue
 
 pthread_cond_t accept_queue_not_empty = PTHREAD_COND_INITIALIZER;
 pthread_cond_t accept_queue_not_full = PTHREAD_COND_INITIALIZER;
@@ -474,16 +476,20 @@ void accept_loop()
                 /* if valid socket descriptor */
                 if (socket_descriptor >= 0)
                 {
-                    /* lock */
-                    pthread_mutex_lock(&accept_queue_mutex);
-                    
+                    pthread_mutex_lock(&signals_mutex);
+
                     /* wait until queue not full anymore */
                     while (! do_shutdown && accept_queue_size == ACCEPT_QUEUE_MAX_SIZE)
-                        pthread_cond_wait(&accept_queue_not_full, &accept_queue_mutex);
+                        pthread_cond_wait(&accept_queue_not_full, &signals_mutex);
                     
+                    pthread_mutex_unlock(&signals_mutex);
+
                     if (do_shutdown)
                         return;
-                    
+
+                    /* lock only to make changes in queue */
+                    pthread_mutex_lock(&accept_queue_mutex);
+
                     /* add socket descriptor to queue */
                     int idx = (accept_queue_start + accept_queue_size++) % ACCEPT_QUEUE_MAX_SIZE;
                     accept_queue[idx] = socket_descriptor;
@@ -1111,19 +1117,20 @@ static void *worker_thread_main(void *arg)
     int thread_num = tinfo->thread_num;
     while (! do_shutdown)
     {
-        /* lock */
-        pthread_mutex_lock(&accept_queue_mutex);
-        
+        pthread_mutex_lock(&signals_mutex);
+
         /* wait until something in queue */ 
         while (! do_shutdown && accept_queue_size == 0)
-            pthread_cond_wait(&accept_queue_not_empty, &accept_queue_mutex);
+            pthread_cond_wait(&accept_queue_not_empty, &signals_mutex);
         
+        pthread_mutex_unlock(&signals_mutex);
+
         if (do_shutdown)
-        {
-            pthread_mutex_unlock(&accept_queue_mutex);
             return NULL;
-        }
-        
+
+        /* lock  only to make changes in queue */
+        pthread_mutex_lock(&accept_queue_mutex);
+
         /* get from queue */
         accept_queue_size--;
         int idx = accept_queue_start++;
