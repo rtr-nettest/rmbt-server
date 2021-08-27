@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Copyright 2012-2014 alladin-IT GmbH
  * Copyright 2014-2016 Thomas Schreiber
- * Copyright 2017 Rundfunk und Telekom Regulierungs-GmbH (RTR-GmbH)
+ * Copyright 2017-2021 Rundfunk und Telekom Regulierungs-GmbH (RTR-GmbH)
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -153,7 +153,7 @@ void print_help()
 			" -d     fork into background as daemon (no argument)\n\n"
 			" -D     enable debug logging (no argument)\n\n"
 			" -w     use as websocket server (no argument)\n\n"
-			" -v     behave as version (v) for serving older clients\n"
+			" -v     behave as version (v) for serving very old clients\n"
 			"        example: \"0.3\"\n\n"
 			"Required are -c,-k and at least one -l/-L option\n",
 			DEFAULT_NUM_THREADS);
