@@ -57,7 +57,7 @@ command line arguments:
 
  -w     use as http and websocket server (no argument)
  
- -v     behave as version (v) for serving older clients
+ -v     behave as version (v) for serving very old clients
         example: "0.3"
 
 ```
@@ -95,7 +95,7 @@ Request from a client to the server
 GET /rmbt HTTP/1.1
 Connection: Upgrade
 Upgrade: RMBT
-RMBT-Version: 1.2.0
+RMBT-Version: 1.2.2
 ```
 
 Response from the server
@@ -137,7 +137,7 @@ in WebSocket frames.
 If the server is started without the ```-w``` parameter, communication is done by relying 
 on plain TCP sockets. As soon as the connection is established, the server will initiate
 the communication by sending the string ```RMBT<VERSION>``` whereas ```<VERSION>``` will contain
-the current version of the server software, e.g. ```v1.2.0```.
+the current version of the server software, e.g. ```v1.2.2```.
 
 Related materials
 -----------------
@@ -156,7 +156,7 @@ Get in Touch
 License
 -------
 
-Copyright 2014-2017 Rundfunk und Telekom Regulierungs-GmbH (RTR-GmbH). This source code is licensed under the Apache license found in
+Copyright 2014-2021 Rundfunk und Telekom Regulierungs-GmbH (RTR-GmbH). This source code is licensed under the Apache license found in
 the [LICENSE.txt](https://github.com/rtr-nettest/rmbtws/blob/master/LICENSE.txt) file.
 The documentation to the project is licensed under the [CC BY-AT 3.0](https://creativecommons.org/licenses/by/3.0/at/deed.de_AT)
 license.
