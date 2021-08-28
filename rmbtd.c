@@ -1141,13 +1141,20 @@ static void *worker_thread_main(void *arg)
         
         struct sockaddr_in6 addr;
         socklen_t addrlen = sizeof(addr);
+
+
+        /* Disable IP address logging as getsocketname and getpeername cause instability
+           when called in this loop */
+
+        /*
+
         int r = getsockname(socket_descriptor, (struct sockaddr *) &addr, &addrlen);
         if (r == -1)
         {
             syslog(LOG_ERR, "[THR %d] error during getsockname: %m", thread_num);
             continue;
         }
-        
+
         r = getpeername(socket_descriptor, (struct sockaddr *) &addr, &addrlen);
         if (r == -1)
         {
@@ -1175,6 +1182,8 @@ static void *worker_thread_main(void *arg)
         
         syslog(LOG_INFO, "[THR %d] connection from: [%s]:%d", thread_num, buf, peer_port);
         
+        */
+
         int use_ssl = listens[listen_idx].use_ssl;
         
 #ifdef HAVE_SSL
