@@ -7,7 +7,7 @@ StartLimitIntervalSec=0
 # supply userid (e.g. netztest), ipv4/v6 addresses and port numbers
 WorkingDirectory=/opt/netztest/server
 ExecStart=@/opt/netztest/rmbtd rmbt -c server.crt -k server.key -u userid -L ipv4_address:port# -L [ipv6_address]:port
-TimeoutStopSec=60
+TimeoutStopSec=10
 Restart=always
 RestartSec=1
 
