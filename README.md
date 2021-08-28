@@ -95,7 +95,7 @@ Request from a client to the server
 GET /rmbt HTTP/1.1
 Connection: Upgrade
 Upgrade: RMBT
-RMBT-Version: 1.2.2
+RMBT-Version: 1.3.0
 ```
 
 Response from the server
@@ -137,7 +137,7 @@ in WebSocket frames.
 If the server is started without the ```-w``` parameter, communication is done by relying 
 on plain TCP sockets. As soon as the connection is established, the server will initiate
 the communication by sending the string ```RMBT<VERSION>``` whereas ```<VERSION>``` will contain
-the current version of the server software, e.g. ```v1.2.2```.
+the current version of the server software, e.g. ```v1.3.0```.
 
 Related materials
 -----------------
