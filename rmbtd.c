@@ -1436,9 +1436,11 @@ void init_ssl(char *cert_path, char *key_path)
     
     SSL_library_init(); /* load encryption & hash algorithms for SSL */                
     SSL_load_error_strings(); /* load the error strings for good error reporting */
-    
-    ssl_ctx = SSL_CTX_new(SSLv23_server_method());
-    
+
+    /* restrict server to TLS 1.2 */
+
+    ssl_ctx = SSL_CTX_new(TLSv1_2_server_method());
+
     if (SSL_CTX_use_certificate_chain_file(ssl_ctx, cert_path) <= 0)
     {
         ERR_print_errors_fp(stderr);
