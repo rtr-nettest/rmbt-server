@@ -387,6 +387,12 @@ void do_bind()
             syslog(LOG_ERR, "error during setsockopt SO_REUSEADDR: %m");
             exit(EXIT_FAILURE);
         }
+
+        if (setsockopt(listens[i].sock, IPPROTO_TCP, TCP_NODELAY , &true, sizeof (int)) == -1)
+        {
+            syslog(LOG_ERR, "error during setsockopt NODELAY: %m");
+            exit(EXIT_FAILURE);
+        }
         
         /* set recieve timeout */
         struct timeval timeout;
