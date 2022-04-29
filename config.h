@@ -32,7 +32,7 @@
 #define MAX_LINE_LENGTH 1024 //max length of String in communication
 #define MAX_SECONDS 30
 
-#define GREETING "RMBTv1.3.1\n" //semantic versioning
+#define GREETING "RMBTv1.3.2\n" //semantic versioning
 
 #define PORT_NOSSL 5231
 #define PORT_SSL 443
