@@ -178,7 +178,7 @@ void wsGetHandshakeAnswer(const struct handshake *hs, uint8_t *outFrame,
     assert(hs && hs->key);
 
     char *responseKey = NULL;
-    uint8_t length = strlen(hs->key)+strlen_P(secret);
+    uint32_t length = strlen(hs->key)+strlen_P(secret);
     responseKey = malloc(length);
     memcpy(responseKey, hs->key, strlen(hs->key));
     memcpy_P(&(responseKey[strlen(hs->key)]), secret, strlen_P(secret));
