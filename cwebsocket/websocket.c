@@ -93,8 +93,11 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
     hs->resource = (char *)malloc(second - first + 1); // +1 is for \x00 symbol
     assert(hs->resource);
 
-    if (sscanf_P(inputPtr, PSTR("GET %s HTTP/1.1\r\n"), hs->resource) != 1)
-        return WS_ERROR_FRAME;
+    if (memcmp(&second[1],"HTTP/1.1\r\n",10)!=0 || first == second)
+      return WS_ERROR_FRAME;
+    memcpy(hs->resource,first,second-first);
+    hs->resource[second-first]=0;
+
     inputPtr = strstr_P(inputPtr, rn) + 2;
 
     /*
