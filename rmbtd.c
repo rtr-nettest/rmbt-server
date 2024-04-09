@@ -39,11 +39,11 @@
 
 #include <pthread.h>
 
-#include <sys/types.h>
+//#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <netdb.h>
+//#include <netdb.h>
 #include <poll.h>
 #include <arpa/inet.h>
 
@@ -1146,12 +1146,6 @@ static void *worker_thread_main(void *arg)
         struct sockaddr_in6 addr;
         socklen_t addrlen = sizeof(addr);
 
-
-        /* Disable IP address logging as getsocketname and getpeername cause instability
-           when called in this loop */
-
-        /*
-
         int r = getsockname(socket_descriptor, (struct sockaddr *) &addr, &addrlen);
         if (r == -1)
         {
@@ -1186,7 +1180,6 @@ static void *worker_thread_main(void *arg)
         
         syslog(LOG_INFO, "[THR %d] connection from: [%s]:%d", thread_num, buf, peer_port);
         
-        */
 
         int use_ssl = listens[listen_idx].use_ssl;
         
@@ -1407,6 +1400,7 @@ void read_secret_keys()
 
 #ifdef HAVE_SSL
 
+/*
 static void lock_callback(int mode, int type, char *file, int line)
 {
   (void)file;
@@ -1418,7 +1412,9 @@ static void lock_callback(int mode, int type, char *file, int line)
     pthread_mutex_unlock(&(lockarray[type]));
   }
 }
+*/
  
+/*
 static unsigned long thread_id(void)
 {
     unsigned long ret;
@@ -1426,6 +1422,7 @@ static unsigned long thread_id(void)
     ret=(unsigned long)pthread_self();
     return(ret);
 }
+*/
 
 void init_ssl(char *cert_path, char *key_path)
 {
@@ -1435,8 +1432,8 @@ void init_ssl(char *cert_path, char *key_path)
     for (i=0; i < CRYPTO_num_locks(); i++)
         pthread_mutex_init(&(lockarray[i]),NULL);
     
-    CRYPTO_set_id_callback((unsigned long (*)())thread_id);
-    CRYPTO_set_locking_callback((void (*)())lock_callback);
+    // CRYPTO_set_id_callback((unsigned long (*)())thread_id);
+    // CRYPTO_set_locking_callback((void (*)())lock_callback);
     
     SSL_library_init(); /* load encryption & hash algorithms for SSL */                
     SSL_load_error_strings(); /* load the error strings for good error reporting */
