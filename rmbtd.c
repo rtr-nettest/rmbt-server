@@ -16,7 +16,7 @@
  * limitations under the License.
  ******************************************************************************/
 #define _POSIX_C_SOURCE 200809L
-#define _BSD_SOURCE
+#define _DEFAULT_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,11 +39,11 @@
 
 #include <pthread.h>
 
-#include <sys/types.h>
+//#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <netdb.h>
+//#include <netdb.h>
 #include <poll.h>
 #include <arpa/inet.h>
 
@@ -159,19 +159,17 @@ void print_help()
 
 void syslog_and_print(int priority, const char *format, ...)
 {
-    int len = strlen(format);
+    va_list args;
+    va_start(args,format);
+
+
+    size_t len = strlen(format);
     char format_nl[len + 2];
-    strncpy(format_nl, format, len);
-    format_nl[len] = '\n';
-    format_nl[len + 1] = '\0';
-    
-    va_list va1, va2;
-    va_start(va1, format);
-    va_copy(va2, va1);
-    vfprintf(stderr, format_nl, va2);
-    va_end(va2);
-    vsyslog(priority, format, va1);
-    va_end(va1);
+    memcpy(format_nl, format, len);
+
+    vfprintf(stderr, format_nl, args);
+    vsyslog(priority, format_nl, args);
+    va_end(args);
 }
 
 ssize_t my_write(MY_SOCK fd, const void *buf, size_t count, char use_websocket) {
@@ -1148,12 +1146,6 @@ static void *worker_thread_main(void *arg)
         struct sockaddr_in6 addr;
         socklen_t addrlen = sizeof(addr);
 
-
-        /* Disable IP address logging as getsocketname and getpeername cause instability
-           when called in this loop */
-
-        /*
-
         int r = getsockname(socket_descriptor, (struct sockaddr *) &addr, &addrlen);
         if (r == -1)
         {
@@ -1188,7 +1180,6 @@ static void *worker_thread_main(void *arg)
         
         syslog(LOG_INFO, "[THR %d] connection from: [%s]:%d", thread_num, buf, peer_port);
         
-        */
 
         int use_ssl = listens[listen_idx].use_ssl;
         
@@ -1409,6 +1400,7 @@ void read_secret_keys()
 
 #ifdef HAVE_SSL
 
+/*
 static void lock_callback(int mode, int type, char *file, int line)
 {
   (void)file;
@@ -1420,7 +1412,9 @@ static void lock_callback(int mode, int type, char *file, int line)
     pthread_mutex_unlock(&(lockarray[type]));
   }
 }
+*/
  
+/*
 static unsigned long thread_id(void)
 {
     unsigned long ret;
@@ -1428,6 +1422,7 @@ static unsigned long thread_id(void)
     ret=(unsigned long)pthread_self();
     return(ret);
 }
+*/
 
 void init_ssl(char *cert_path, char *key_path)
 {
@@ -1437,19 +1432,25 @@ void init_ssl(char *cert_path, char *key_path)
     for (i=0; i < CRYPTO_num_locks(); i++)
         pthread_mutex_init(&(lockarray[i]),NULL);
     
-    CRYPTO_set_id_callback((unsigned long (*)())thread_id);
-    CRYPTO_set_locking_callback((void (*)())lock_callback);
+    // CRYPTO_set_id_callback((unsigned long (*)())thread_id);
+    // CRYPTO_set_locking_callback((void (*)())lock_callback);
     
     SSL_library_init(); /* load encryption & hash algorithms for SSL */                
     SSL_load_error_strings(); /* load the error strings for good error reporting */
 
-    /* restrict server to TLS 1.2 */
+    ssl_ctx = SSL_CTX_new(TLS_method());
 
-    ssl_ctx = SSL_CTX_new(TLSv1_2_server_method());
+    // restrict server to TLS 1.2 or above
+    if (!SSL_CTX_set_min_proto_version(ssl_ctx, TLS1_2_VERSION)) {
+        ERR_print_errors_fp(stderr);
+        SSL_CTX_free(ssl_ctx);
+        exit(EXIT_FAILURE);
+    }
 
     if (SSL_CTX_use_certificate_chain_file(ssl_ctx, cert_path) <= 0)
     {
         ERR_print_errors_fp(stderr);
+        SSL_CTX_free(ssl_ctx);
         exit(EXIT_FAILURE);
     }
     
@@ -1457,6 +1458,7 @@ void init_ssl(char *cert_path, char *key_path)
     if (SSL_CTX_use_PrivateKey_file(ssl_ctx, key_path, SSL_FILETYPE_PEM) <= 0)
     {
         ERR_print_errors_fp(stderr);
+        SSL_CTX_free(ssl_ctx);
         exit(EXIT_FAILURE);
     }
     
@@ -1465,6 +1467,7 @@ void init_ssl(char *cert_path, char *key_path)
     if (!SSL_CTX_load_verify_locations(ctx,CA_CERT,NULL))
     { 
         ERR_print_errors_fp(stderr);
+        SSL_CTX_free(ssl_ctx);
         exit(1);
     }
     */
