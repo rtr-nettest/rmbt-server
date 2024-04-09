@@ -1438,13 +1438,19 @@ void init_ssl(char *cert_path, char *key_path)
     SSL_library_init(); /* load encryption & hash algorithms for SSL */                
     SSL_load_error_strings(); /* load the error strings for good error reporting */
 
-    /* restrict server to TLS 1.2 */
+    ssl_ctx = SSL_CTX_new(TLS_method());
 
-    ssl_ctx = SSL_CTX_new(TLSv1_2_server_method());
+    // restrict server to TLS 1.2 or above
+    if (!SSL_CTX_set_min_proto_version(ssl_ctx, TLS1_2_VERSION)) {
+        ERR_print_errors_fp(stderr);
+        SSL_CTX_free(ssl_ctx);
+        exit(EXIT_FAILURE);
+    }
 
     if (SSL_CTX_use_certificate_chain_file(ssl_ctx, cert_path) <= 0)
     {
         ERR_print_errors_fp(stderr);
+        SSL_CTX_free(ssl_ctx);
         exit(EXIT_FAILURE);
     }
     
@@ -1452,6 +1458,7 @@ void init_ssl(char *cert_path, char *key_path)
     if (SSL_CTX_use_PrivateKey_file(ssl_ctx, key_path, SSL_FILETYPE_PEM) <= 0)
     {
         ERR_print_errors_fp(stderr);
+        SSL_CTX_free(ssl_ctx);
         exit(EXIT_FAILURE);
     }
     
@@ -1460,6 +1467,7 @@ void init_ssl(char *cert_path, char *key_path)
     if (!SSL_CTX_load_verify_locations(ctx,CA_CERT,NULL))
     { 
         ERR_print_errors_fp(stderr);
+        SSL_CTX_free(ssl_ctx);
         exit(1);
     }
     */
