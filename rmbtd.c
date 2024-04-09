@@ -159,19 +159,17 @@ void print_help()
 
 void syslog_and_print(int priority, const char *format, ...)
 {
-    int len = strlen(format);
+    va_list args;
+    va_start(args,format);
+
+
+    size_t len = strlen(format);
     char format_nl[len + 2];
-    strncpy(format_nl, format, len);
-    format_nl[len] = '\n';
-    format_nl[len + 1] = '\0';
-    
-    va_list va1, va2;
-    va_start(va1, format);
-    va_copy(va2, va1);
-    vfprintf(stderr, format_nl, va2);
-    va_end(va2);
-    vsyslog(priority, format, va1);
-    va_end(va1);
+    memcpy(format_nl, format, len);
+
+    vfprintf(stderr, format_nl, args);
+    vsyslog(priority, format_nl, args);
+    va_end(args);
 }
 
 ssize_t my_write(MY_SOCK fd, const void *buf, size_t count, char use_websocket) {
