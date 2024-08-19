@@ -545,7 +545,7 @@ cl->>cs:Test results
 
 |Version |Date |Comment
 | :-- | :-- | :--
-|1.1.0|19.08.2024|- Update of the document with minor additions and clarifications<br>- Publication under https://github.com/rtr-nettest/rmbt-server/RMBT_specification.md
+|1.1.0|19.08.2024|- Update of the document with minor additions and clarifications<br>- Publication under https://github.com/rtr-nettest/rmbt-server/blob/master/RMBT_specification.md
 |1.0.1|27.05.2024|- Conversion from AsciiDoc into GitHub Flavored Markdown (GFM) with minor editorial changes
 |1.0.0|22.06.2017|- Support for dynamic chunk sizes<br>- Published under https://www.netztest.at/doc/
 |0.8.0|16.10.2015|- First HTML version<br>- Updates and clarifications, mainly for formulas and communication examples<br>- System overview figure updated for functionality<br>- Minor refinements and error corrections<br>- Change history added
