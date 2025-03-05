@@ -142,7 +142,7 @@ the current version of the server software, e.g. ```v1.3.0```.
 Related materials
 -----------------
 
-* [RMBT specification](RMBT_specification.md)
+* [RMBT specification]((https://github.com/rtr-nettest/rmbtws/RMBT_specification.md)
 * [RMBTws Client](https://github.com/rtr-nettest/rmbtws)
 * [RTR-Netztest/open-rmbt](https://github.com/rtr-nettest/open-rmbt)
 * [RMBT C client (3<sup>rd</sup> party)](https://github.com/lwimmer/rmbt-client)  

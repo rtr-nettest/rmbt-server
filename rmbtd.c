@@ -159,16 +159,19 @@ void print_help()
 
 void syslog_and_print(int priority, const char *format, ...)
 {
-    va_list args;
-    va_start(args,format);
-
+    va_list args, args_copy;
+    va_start(args, format);
 
     size_t len = strlen(format);
     char format_nl[len + 2];
     memcpy(format_nl, format, len);
+    format_nl[len] = '\n';
+    format_nl[len + 1] = '\0';
 
-    vfprintf(stderr, format_nl, args);
-    vsyslog(priority, format_nl, args);
+    va_copy(args_copy, args);
+    vfprintf(stderr, format_nl, args_copy);
+    va_copy(args_copy, args);
+    vsyslog(priority, format_nl, args_copy);
     va_end(args);
 }
 
@@ -251,9 +254,11 @@ ssize_t my_read(MY_SOCK b, void *buf, size_t count, char use_websocket) {
                 if (newLen == 0) {
                     break;
                 }
-                else if (newLen < 0) {
+                if (newLen < 0) {
                     long err = ERR_get_error();
-                    syslog(LOG_ERR, "error: %ld %s - ", err, ERR_error_string(errno, NULL));
+                    char error_buf[256];
+                    ERR_error_string_n(err, error_buf, sizeof(error_buf));
+                    syslog(LOG_ERR, "error: %ld %s - ", err, error_buf);
                     syslog(LOG_ERR, "error: %d %s\n", errno, strerror(errno));
                     break;
                 }
@@ -274,8 +279,7 @@ ssize_t my_read(MY_SOCK b, void *buf, size_t count, char use_websocket) {
             finFlagSet = (tmpBuf[0] & 0x80) == 0x80;            
             //prevent buffer overflow
             if ((totalRead + in_len) > count) {
-                syslog(LOG_DEBUG, "preventing possible buffer overflow with continuation frame %lu %ld %ld %d", totalRead, in_len, count, finFlagSet);
-                totalRead += in_len;
+                syslog(LOG_DEBUG, "preventing possible buffer overflow with continuation frame %zd %zu %zu %d", totalRead, in_len, count, finFlagSet);                totalRead += in_len;
                 continue;
             }
             
@@ -589,10 +593,9 @@ int check_token(int thread_num, const char *uuid, const char *start_time_str, co
         if (start_time - MAX_ACCEPT_EARLY > now || start_time + MAX_ACCEPT_LATE < now)
         {
             if (start_time - MAX_ACCEPT_EARLY > now)
-            	syslog(LOG_ERR, "[THR %d] client is not allowed yet. %ld seconds to early", thread_num, start_time - now);
-			else
-				syslog(LOG_ERR, "[THR %d] client is %ld seconds too late", thread_num, now - start_time);
-
+                syslog(LOG_ERR, "[THR %d] client is %lld seconds too early. Let him wait", thread_num, (long long)(start_time - now));
+            else
+                syslog(LOG_ERR, "[THR %d] client is %lld seconds too late", thread_num, (long long)(now - start_time));
             result = -1;
         }
         
