@@ -1,22 +1,46 @@
-GCC_PARAMS = -Wall -Wno-unused-value -o rmbtd cwebsocket/base64_enc.c cwebsocket/sha1.c cwebsocket/websocket.c rmbtd.c -pthread -lrt -lssl -lcrypto
-SERVER_DEP = cwebsocket/websocket.c rmbtd.c config.h
+CC      = gcc
 
-all: rmbtd
+GIT_DESCRIBE := $(shell git describe --tags --long --always 2>/dev/null)
+GIT_VERSION  := $(shell echo "$(GIT_DESCRIBE)" | sed 's/-g[0-9a-f]*$$//')
+ifeq ($(strip $(GIT_VERSION)),)
+GIT_VERSION  := dev
+endif
 
-rmbtd: ${SERVER_DEP}
-	gcc -O0 -g ${GCC_PARAMS}
+CFLAGS  = -Wall -Wextra -O2 -std=c17 -D_POSIX_C_SOURCE=200809L \
+          -DGIT_VERSION='"$(GIT_VERSION)"' \
+          -Isrc $(shell pkg-config --cflags openssl 2>/dev/null)
+LDFLAGS = $(shell pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto") \
+          -lpthread
 
-server-prod: ${SERVER_DEP}
-	gcc -O3 ${GCC_PARAMS}
-	
-clean:
-	rm rmbtd
+SRCS = src/main.c \
+       src/server.c \
+       src/conn.c \
+       src/protocol.c \
+       src/token.c \
+       src/ws.c \
+       src/random.c
 
-run: random rmbtd
-	./rmbtd -l 8081 -L 8082 -c server.crt -k server.key -D
-	
-random: 
+OBJS = $(SRCS:src/%.c=build/%.o)
+BIN  = build/rmbtd
+
+all: $(BIN)
+
+$(BIN): $(OBJS) | build
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+build/%.o: src/%.c | build
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+build:
+	mkdir -p build
+
+random:
 	dd if=/dev/urandom of=random bs=1M count=100
 
-key:
-	< /dev/urandom tr -dc A-Za-z0-9 | head -c100 | awk '{print $$1 " auto-generated key"}' >> secret.key
+clean:
+	rm -rf build
+
+install: $(BIN)
+	install -m 755 $(BIN) /usr/local/bin/rmbtd
+
+.PHONY: all clean install random
