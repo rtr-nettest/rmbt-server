@@ -37,6 +37,8 @@ static void print_help(const char *prog)
         "  -s PATH   Secret key file (default: secret.key)\n"
         "  -r PATH   Random data file (default: random)\n"
         "  -n        Disable token validation\n"
+        "  -2        Accept only v2 tokens (SHA256, IP+time bound); reject legacy v1\n"
+        "            (long form: --v2-only)\n"
         "  -v VER    Compatibility mode ('0.3')\n"
         "  -h        Print this help\n\n"
         "At least one -l or -L is required.\n",
@@ -101,8 +103,14 @@ int main(int argc, char **argv)
     bool        do_fork     = false;
     bool        debug       = false;
 
+    static const struct option long_opts[] = {
+        { "v2-only", no_argument, NULL, '2' },
+        { NULL, 0, NULL, 0 },
+    };
+
     int opt;
-    while ((opt = getopt(argc, argv, "l:L:c:k:t:u:s:r:v:dDwnh")) != -1) {
+    while ((opt = getopt_long(argc, argv, "l:L:c:k:t:u:s:r:v:dDwnh2",
+                              long_opts, NULL)) != -1) {
         switch (opt) {
         case 'l':
         case 'L': {
@@ -130,6 +138,7 @@ int main(int argc, char **argv)
         case 'D': debug       = true;   break;
         case 'w': cfg.use_http = true;  break;
         case 'n': cfg.check_token = false; break;
+        case '2': cfg.v2_only     = true;  break;
         case 't':
             cfg.num_threads = atoi(optarg);
             if (cfg.num_threads <= 0) {

@@ -175,8 +175,24 @@ void protocol_handle(Conn *conn, const ProtocolCfg *cfg)
         return;
     }
 
+    /* The control server may append a v2 token: "<v1>_#v2#<base64>". If the marker
+     * is present, validate the v2 part (SHA256 + source IP + time) and ignore the v1
+     * prefix; otherwise validate the legacy v1 token — unless v2-only mode rejects it.
+     * '#' is not in the base64/uuid/hmac alphabets, so the marker is unambiguous. */
+    const char *v2 = strstr(line, "#v2#");
+    if (v2) v2 += 4;   /* skip the marker → base64 v2 token to end of line */
+
     if (cfg->check_token) {
-        if (!token_validate(cfg->keys, thr, uuid, ts_str, hmac)) {
+        bool ok;
+        if (v2) {
+            ok = token_validate_v2(cfg->keys, thr, v2, cfg->source_ip);
+        } else if (cfg->v2_only) {
+            syslog(LOG_ERR, "[THR %d] v1 token rejected: server is in v2-only mode", thr);
+            ok = false;
+        } else {
+            ok = token_validate(cfg->keys, thr, uuid, ts_str, hmac);
+        }
+        if (!ok) {
             syslog(LOG_ERR, "[THR %d] token rejected", thr);
             return;
         }

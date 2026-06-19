@@ -17,6 +17,7 @@ typedef struct {
     int      num_threads;
     bool     use_http;      /* -w: expect HTTP/WebSocket upgrade */
     bool     check_token;
+    bool     v2_only;       /* accept only v2 (#v2#) tokens; reject legacy v1 */
     bool     compat_v03;
     int      timeout_s;
 

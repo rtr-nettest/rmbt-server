@@ -97,7 +97,8 @@ static void handle_accepted(int fd, int listen_idx,
 {
     struct sockaddr_in6 peer;
     socklen_t plen = sizeof(peer);
-    if (getpeername(fd, (struct sockaddr *)&peer, &plen) == 0) {
+    bool have_peer = (getpeername(fd, (struct sockaddr *)&peer, &plen) == 0);
+    if (have_peer) {
         char ip[INET6_ADDRSTRLEN];
         inet_ntop(AF_INET6, &peer.sin6_addr, ip, sizeof(ip));
         anonymize_ip(ip);
@@ -141,8 +142,10 @@ static void handle_accepted(int fd, int listen_idx,
     ProtocolCfg pcfg = {
         .keys        = cfg->keys,
         .check_token = cfg->check_token,
+        .v2_only     = cfg->v2_only,
         .compat_v03  = cfg->compat_v03,
         .thread_num  = thread_num,
+        .source_ip   = have_peer ? peer.sin6_addr.s6_addr : NULL,
     };
     protocol_handle(conn, &pcfg);
 

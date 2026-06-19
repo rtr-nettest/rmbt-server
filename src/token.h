@@ -17,3 +17,13 @@ int  keystore_load(KeyStore *ks, const char *path);
  */
 bool token_validate(const KeyStore *ks, int thread_num,
                     const char *uuid, const char *ts_str, const char *hmac);
+
+/*
+ * Validate a v2 token (open-rmbt-udp-ping schema): base64 of 16 bytes
+ *   time(4 BE) || HMAC-SHA256(key, time)[0..8] || HMAC-SHA256(key, time||ip16)[0..4].
+ * The time HMAC identifies the key, the IP HMAC binds the 16-byte client source
+ * address (IPv4-mapped IPv6, network byte order), and the 32-bit time must fall in
+ * the acceptance window. Returns false (and never sleeps) if source_ip is NULL.
+ */
+bool token_validate_v2(const KeyStore *ks, int thread_num,
+                       const char *b64, const uint8_t *source_ip);
